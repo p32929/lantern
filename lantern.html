@@ -1,0 +1,955 @@
+<!doctype html>
+<html lang="en" class="uk-theme-zinc">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lantern</title>
+<script>
+// Theme: "system" (follows the OS), "light" or "dark", remembered in this browser.
+const dm = matchMedia("(prefers-color-scheme: dark)");
+let theme = "system";
+try { theme = localStorage.getItem("lantern-theme") || "system"; } catch {}
+function applyTheme() {
+  document.documentElement.classList.toggle("dark", theme === "dark" || (theme === "system" && dm.matches));
+  document.querySelectorAll("#theme button").forEach(b => b.classList.toggle("on", b.dataset.t === theme));
+}
+applyTheme(); dm.addEventListener("change", applyTheme);
+</script>
+<style>
+/* Loading screen: covers everything until the first data arrives. Self-contained so it
+   shows before Franken UI's CSS has loaded. */
+#boot{--b:#fff;--m:#f4f4f5;--l:#e4e4e7;position:fixed;inset:0;z-index:1000;background:var(--b);padding:24px 32px;overflow:hidden;transition:opacity .2s}
+.dark #boot{--b:#09090b;--m:#1f1f23;--l:#27272a}
+html:has(#boot){background:#fff}
+html.dark:has(#boot){background:#09090b}
+#boot.gone{opacity:0;pointer-events:none}
+#boot i{display:block;border-radius:6px;background:linear-gradient(90deg,var(--m) 25%,var(--l) 50%,var(--m) 75%);background-size:200% 100%;animation:bootsh 1.2s linear infinite}
+@keyframes bootsh{to{background-position:-200% 0}}
+#boot .bt{display:flex;align-items:center;gap:12px;margin-bottom:20px}
+#boot .bx{border:1px solid var(--l);border-radius:8px}
+#boot .bs{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:20px}
+#boot .bs > div{padding:16px 18px;border:1px solid var(--l);border-radius:10px}
+#boot .br{display:flex;align-items:center;gap:16px;height:52px;padding:0 18px;border-top:1px solid var(--l)}
+@media (max-width:768px){#boot{padding:16px 12px}#boot .bs{grid-template-columns:repeat(2,1fr)}#boot .bs > div:nth-child(n+3){display:none}#boot .hs{display:none}}
+</style>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/franken-ui@2.1.2/dist/css/core.min.css">
+<script src="https://cdn.jsdelivr.net/npm/franken-ui@2.1.2/dist/js/core.iife.js" type="module"></script>
+<script src="https://cdn.jsdelivr.net/npm/franken-ui@2.1.2/dist/js/icon.iife.js" type="module"></script>
+<style>
+:root{--ok:142 71% 40%;--line:hsl(var(--border))}
+.dark{--ok:142 69% 50%}
+body{background:hsl(var(--background));color:hsl(var(--foreground));min-height:100vh;-webkit-font-smoothing:antialiased}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.num{font-variant-numeric:tabular-nums}
+.mut{color:hsl(var(--muted-foreground))}
+.err{color:hsl(var(--destructive));font-size:.8125rem}
+.sp{flex:1}
+uk-icon{display:inline-flex}
+.ic{display:inline-flex;align-items:center;gap:6px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spin uk-icon{animation:spin .8s linear infinite}
+@keyframes shimmer{to{background-position:-200% 0}}
+.sk,.busy .uk-input,.busy .uk-textarea{background:linear-gradient(90deg,hsl(var(--muted)) 25%,hsl(var(--muted)/.45) 50%,hsl(var(--muted)) 75%);background-size:200% 100%;animation:shimmer 1.2s linear infinite}
+.sk{display:block;border-radius:6px;height:12px}
+.busy .uk-input,.busy .uk-textarea{color:transparent;pointer-events:none}
+.busy ::placeholder{color:transparent}
+
+/* page */
+.wrap{padding:24px 32px 48px}
+.top{display:flex;align-items:center;gap:12px;margin-bottom:20px}
+.brand{display:flex;align-items:center;gap:12px;min-width:0}
+.logo{width:45px;height:45px;border-radius:10px;display:grid;place-items:center;background:hsl(var(--primary));color:hsl(var(--primary-foreground));flex:none}
+.top h1{font-size:1.0625rem;font-weight:600;margin:0;line-height:1.25}
+.top h1 .ver{font-size:.6875rem;font-weight:500;color:hsl(var(--muted-foreground));border:1px solid var(--line);border-radius:999px;padding:1px 7px;margin-left:4px;vertical-align:2px}
+.top .sub{font-size:.8125rem;color:hsl(var(--muted-foreground))}
+.tools{display:flex;gap:8px;align-items:center}
+.seg{display:inline-flex;padding:3px;gap:2px;border:1px solid var(--line);border-radius:8px;background:hsl(var(--background))}
+.seg button{height:28px;min-width:28px;padding:0 8px;border:0;border-radius:6px;background:none;color:hsl(var(--muted-foreground));cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;font-size:.8125rem}
+.seg button:hover{color:hsl(var(--foreground))}
+.seg button.on{background:hsl(var(--muted));color:hsl(var(--foreground))}
+
+/* stats: one card per box, each with its graph along the bottom */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px}
+.stat{padding:14px 18px 30px;border:1px solid hsl(var(--border));border-radius:10px;background:hsl(var(--card));box-shadow:0 1px 2px rgb(0 0 0/.05);min-width:0}
+.stat .k{display:flex;align-items:center;gap:6px;font-size:.75rem;color:hsl(var(--muted-foreground))}
+.stat .v{font-size:1.25rem;font-weight:600;letter-spacing:-.02em;margin-top:4px;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stat .s{font-size:.75rem;color:hsl(var(--muted-foreground));white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* services table */
+.svc .hd{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--line)}
+.svc .hd h2{font-size:.9375rem;font-weight:600;margin:0}
+.svc table{margin:0}
+.svc th{font-size:.75rem;font-weight:500;text-transform:none;color:hsl(var(--muted-foreground));padding:10px 12px;white-space:nowrap}
+.svc td{padding:0 12px;height:52px;white-space:nowrap}
+.svc th:first-child,.svc td:first-child{padding-left:18px}
+.svc th:last-child,.svc td:last-child{padding-right:18px}
+th.r,td.r{text-align:right}
+/* small graphs */
+.spark{display:block;color:hsl(var(--muted-foreground));overflow:visible}
+.spark .l{fill:none;stroke:currentColor;stroke-width:1.5;stroke-linejoin:round;stroke-linecap:round;vector-effect:non-scaling-stroke}
+.spark .a{fill:currentColor;opacity:.12}
+.mv{display:inline-flex;align-items:center;gap:10px;justify-content:flex-end}
+.mv > span:not(.sw){min-width:5.6em;text-align:right}
+.uk-tooltip{max-width:280px}
+.stat{position:relative;overflow:hidden}
+.stat > *:not(.sbg){position:relative}
+.stat .sbg{position:absolute;left:0;right:0;bottom:0;width:100%;height:24px;opacity:.5}
+/* usage charts */
+.charts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:14px}
+.chart{margin:0;border:1px solid var(--line);border-radius:10px;padding:14px 14px 8px;position:relative;min-width:0}
+.chart figcaption{display:flex;align-items:baseline;gap:8px;font-size:.8125rem;font-weight:600;margin-bottom:8px}
+.chart figcaption .now{font-weight:500;color:hsl(var(--muted-foreground));font-variant-numeric:tabular-nums}
+.plot{position:relative;height:190px}
+.plot svg{display:block;overflow:visible}
+.plot .grid{stroke:var(--line);stroke-width:1}
+.plot .ax{fill:hsl(var(--muted-foreground));font-size:11px;font-variant-numeric:tabular-nums}
+.plot .l{fill:none;stroke:hsl(var(--foreground));stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.plot .a{fill:hsl(var(--foreground));opacity:.08}
+.plot .cross{stroke:hsl(var(--muted-foreground));stroke-width:1;stroke-dasharray:3 3}
+.plot .pt{fill:hsl(var(--foreground));stroke:hsl(var(--background));stroke-width:2}
+.tip{position:absolute;top:0;pointer-events:none;background:hsl(var(--popover));color:hsl(var(--popover-foreground));border:1px solid var(--line);border-radius:6px;padding:4px 8px;font-size:.75rem;white-space:nowrap;box-shadow:0 4px 12px rgb(0 0 0/.12);font-variant-numeric:tabular-nums}
+.tip b{font-weight:600}
+.nodata{display:grid;place-items:center;height:100%;text-align:center;font-size:.8125rem;color:hsl(var(--muted-foreground));padding:0 16px}
+tr.grp td{height:auto;padding-top:14px;padding-bottom:6px;font-size:.6875rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:hsl(var(--muted-foreground));background:hsl(var(--muted)/.35)}
+tr.grp .c{margin-left:6px;font-weight:500;opacity:.7}
+tr.it{cursor:pointer}
+tr.it:focus-visible{outline:2px solid hsl(var(--ring));outline-offset:-2px}
+td.nm{width:34%;max-width:0}
+.name{display:flex;align-items:center;gap:10px;font-weight:500;overflow:hidden}
+.name span.t{overflow:hidden;text-overflow:ellipsis}
+.down-tag{font-size:.75rem;font-weight:500;color:hsl(var(--destructive))}
+.dot{width:8px;height:8px;border-radius:50%;background:hsl(var(--muted-foreground)/.45);flex:none}
+.dot.up{background:hsl(var(--ok));box-shadow:0 0 0 3px hsl(var(--ok)/.16)}
+.dot.down{background:hsl(var(--destructive));box-shadow:0 0 0 3px hsl(var(--destructive)/.2)}
+td.link{max-width:0;width:26%}
+td.link a{display:inline-flex;align-items:center;gap:4px;max-width:100%;overflow:hidden;color:hsl(var(--muted-foreground));font-size:.8125rem}
+td.link a span{overflow:hidden;text-overflow:ellipsis}
+td.link a:hover{color:hsl(var(--foreground))}
+.ra{display:flex;gap:4px;justify-content:flex-end;align-items:center}
+.ra .uk-btn{color:hsl(var(--muted-foreground))}
+.ra .uk-btn:hover{color:hsl(var(--foreground))}
+.empty{padding:64px 16px;text-align:center}
+.empty p{margin:0 0 16px}
+
+/* details window */
+#dlg .uk-modal-dialog{width:min(1100px,calc(100vw - 32px));border-radius:12px;overflow:hidden;display:flex;flex-direction:column;max-height:calc(100vh - 32px)}
+.dh{display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid var(--line)}
+.dh h2{font-size:1.0625rem;font-weight:600;margin:0;white-space:nowrap}
+.dh .lnk{font-size:.8125rem;display:inline-flex;align-items:center;gap:4px;color:hsl(var(--muted-foreground));overflow:hidden;white-space:nowrap;min-width:0}
+.dh .lnk span{overflow:hidden;text-overflow:ellipsis}
+.dbar{display:flex;align-items:center;gap:12px;padding:10px 20px 0}
+.pane{padding:14px 20px 20px;overflow:auto;flex:1;min-height:0}
+.row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.status{font-size:.75rem;color:hsl(var(--muted-foreground))}
+pre.out{margin:0;background:hsl(var(--muted)/.4);border:1px solid var(--line);border-radius:8px;padding:12px 14px;font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;word-break:break-word;overflow:auto;color:hsl(var(--foreground))}
+#logs{height:min(64vh,580px)}
+#term{height:min(60vh,540px);margin-top:12px;padding:8px 0 8px 10px;border:1px solid var(--line);border-radius:8px;background:hsl(var(--background));overflow:hidden}
+#term .xterm,#term .xterm-viewport{background:transparent!important}
+
+/* settings form */
+.sec{border:1px solid var(--line);border-radius:10px;margin-bottom:16px}
+.sec > header{padding:12px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px}
+.sec > header h3{font-size:.875rem;font-weight:600;margin:0}
+.sec > header p{font-size:.75rem;margin:0;color:hsl(var(--muted-foreground))}
+.sec > .body{padding:16px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 16px}
+.f{display:flex;flex-direction:column;gap:6px;min-width:0}
+.f.full{grid-column:1/-1}
+.f > label{font-size:.8125rem;font-weight:500;margin:0}
+.f .hint{font-size:.75rem;color:hsl(var(--muted-foreground))}
+.sec textarea{font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;resize:vertical;min-height:36px}
+.fill{display:flex;gap:8px}
+.fill .uk-select{width:auto;flex:none}
+#acts{display:flex;flex-direction:column;gap:10px}
+#acts:empty{display:none}
+.act{border:1px solid var(--line);border-radius:8px;padding:10px;display:grid;grid-template-columns:auto 36px minmax(0,1fr) auto auto;gap:8px;align-items:center}
+.act textarea{grid-column:1/-1}
+.act .tbl{display:inline-flex;align-items:center;gap:8px;font-size:.8125rem;white-space:nowrap}
+.icbtn{width:36px;height:36px;padding:0;justify-content:center}
+.foot{display:flex;align-items:center;gap:8px;padding:12px 20px;border-top:1px solid var(--line);background:hsl(var(--background))}
+#addAct{margin-top:10px}
+
+#blocked{position:fixed;inset:0;z-index:2000;background:hsl(var(--background));display:grid;place-items:center;padding:16px;text-align:center}
+#blocked .uk-card{max-width:400px;display:flex;flex-direction:column;align-items:center;gap:6px}
+#blocked uk-icon{color:hsl(var(--destructive));margin-bottom:6px}
+#blocked h2{font-size:1.125rem;font-weight:600;margin:0}
+#blocked p{margin:0;font-size:.875rem}
+
+/* icon picker */
+#iconDlg .uk-modal-dialog{width:min(640px,calc(100vw - 32px));border-radius:12px}
+#iconGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(44px,1fr));gap:4px;max-height:50vh;overflow:auto;margin-top:12px}
+#iconGrid button{height:44px;border:1px solid transparent;border-radius:8px;background:none;color:hsl(var(--foreground));cursor:pointer;display:grid;place-items:center}
+#iconGrid button:hover{background:hsl(var(--muted))}
+#iconGrid button.on{border-color:hsl(var(--foreground))}
+
+@media (max-width:768px){
+  .wrap{padding:16px 12px 32px}
+  .top{flex-wrap:wrap}
+  .tools{width:100%}
+  .hide-s{display:none}
+  .stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .charts{grid-template-columns:minmax(0,1fr)}
+  .stat .s{white-space:normal}
+  /* services: each row becomes a small card with everything the desktop shows */
+  .svc table,.svc tbody,.svc tr.grp,.svc tr.grp td{display:block}
+  .svc thead{display:none}
+  .svc tr.grp td{padding:12px 14px 6px}
+  .svc tr.it{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:6px 12px;padding:12px 14px;align-items:center}
+  .svc tr.it td{display:block;height:auto;padding:0;width:auto;max-width:none;border:0;text-align:left}
+  .svc td.nm{grid-column:1/3;grid-row:1}
+  .svc td.acts{grid-column:3;grid-row:1}
+  .svc tr.it td.link{grid-column:1/-1;grid-row:2;padding-left:18px}
+  .svc td.link:empty{display:none}
+  .svc tr.it td.cpu{grid-row:3}
+  .svc tr.it td.mem{grid-row:4}
+  .svc tr.it td.cpu,.svc tr.it td.mem{grid-column:1/-1;display:flex;align-items:center;gap:8px;padding-left:18px;font-size:.8125rem}
+  .svc tr.it td.cpu:empty,.svc tr.it td.mem:empty{display:none}
+  .svc td.cpu::before,.svc td.mem::before{content:attr(data-l);min-width:58px;color:hsl(var(--muted-foreground));font-size:.75rem}
+  .svc td.cpu .mv,.svc td.mem .mv{flex-direction:row-reverse;justify-content:flex-end;gap:10px}
+  .svc td .mv > span:not(.sw){min-width:5.6em;text-align:left}
+  .svc .spark{width:72px;height:18px}
+  /* details window: use the width, show the link under the name */
+  #dlg .uk-modal-dialog{width:calc(100vw - 16px)}
+  #dlg{padding-left:8px;padding-right:8px}
+  .dh{flex-wrap:wrap;row-gap:4px;padding:14px 16px}
+  .dh .lnk{order:5;flex-basis:100%;padding-left:20px}
+  .dbar,.pane{padding-left:14px;padding-right:14px}
+  .dbar{flex-wrap:wrap;row-gap:8px}
+  #tabs{width:100%}
+  #tabs button{flex:1;padding:0 4px}
+  .sec > .body{grid-template-columns:minmax(0,1fr)}
+  .act{grid-template-columns:auto 36px minmax(0,1fr) auto}
+  .act .mode{grid-row:1;grid-column:1}
+  .act .pick{grid-row:1;grid-column:2}
+  .act .rm{grid-row:1;grid-column:4}
+  .act .lbl{grid-row:2;grid-column:1/-1}
+  .act .cmd{grid-row:3;grid-column:1/-1}
+  .act .tbl{grid-row:4;grid-column:1/-1}
+}
+</style>
+</head>
+<body>
+<div id="boot" aria-busy="true" aria-label="Loading">
+  <div class="bt">
+    <i style="width:45px;height:45px;border-radius:10px"></i>
+    <div><i style="width:110px;height:16px"></i><i style="width:190px;height:12px;margin-top:9px"></i></div>
+    <span style="flex:1"></span>
+    <i class="hs" style="width:104px;height:36px;border-radius:8px"></i><i class="hs" style="width:36px;height:36px"></i><i style="width:36px;height:36px"></i><i style="width:76px;height:36px"></i>
+  </div>
+  <div class="bs">
+    <div><i style="width:45%;height:11px"></i><i style="width:70%;height:20px;margin-top:9px"></i><i style="width:50%;height:11px;margin-top:8px"></i></div><div><i style="width:45%;height:11px"></i><i style="width:70%;height:20px;margin-top:9px"></i><i style="width:50%;height:11px;margin-top:8px"></i></div><div><i style="width:45%;height:11px"></i><i style="width:70%;height:20px;margin-top:9px"></i><i style="width:50%;height:11px;margin-top:8px"></i></div><div><i style="width:45%;height:11px"></i><i style="width:70%;height:20px;margin-top:9px"></i><i style="width:50%;height:11px;margin-top:8px"></i></div><div><i style="width:45%;height:11px"></i><i style="width:70%;height:20px;margin-top:9px"></i><i style="width:50%;height:11px;margin-top:8px"></i></div><div><i style="width:45%;height:11px"></i><i style="width:70%;height:20px;margin-top:9px"></i><i style="width:50%;height:11px;margin-top:8px"></i></div>
+  </div>
+  <div class="bx">
+    <div style="display:flex;align-items:center;gap:10px;height:52px;padding:0 18px"><i style="width:80px;height:14px"></i><i style="width:24px;height:18px;border-radius:9px"></i></div>
+    <div class="br"><i style="width:8px;height:8px;border-radius:50%"></i><i style="width:18%;height:13px"></i><span style="flex:1"></span><i class="hs" style="width:130px;height:11px"></i><i style="width:56px;height:13px"></i><i style="width:20px;height:20px"></i></div><div class="br"><i style="width:8px;height:8px;border-radius:50%"></i><i style="width:14%;height:13px"></i><span style="flex:1"></span><i class="hs" style="width:130px;height:11px"></i><i style="width:56px;height:13px"></i><i style="width:20px;height:20px"></i></div><div class="br"><i style="width:8px;height:8px;border-radius:50%"></i><i style="width:20%;height:13px"></i><span style="flex:1"></span><i class="hs" style="width:130px;height:11px"></i><i style="width:56px;height:13px"></i><i style="width:20px;height:20px"></i></div><div class="br"><i style="width:8px;height:8px;border-radius:50%"></i><i style="width:12%;height:13px"></i><span style="flex:1"></span><i class="hs" style="width:130px;height:11px"></i><i style="width:56px;height:13px"></i><i style="width:20px;height:20px"></i></div><div class="br"><i style="width:8px;height:8px;border-radius:50%"></i><i style="width:16%;height:13px"></i><span style="flex:1"></span><i class="hs" style="width:130px;height:11px"></i><i style="width:56px;height:13px"></i><i style="width:20px;height:20px"></i></div><div class="br"><i style="width:8px;height:8px;border-radius:50%"></i><i style="width:22%;height:13px"></i><span style="flex:1"></span><i class="hs" style="width:130px;height:11px"></i><i style="width:56px;height:13px"></i><i style="width:20px;height:20px"></i></div><div class="br"><i style="width:8px;height:8px;border-radius:50%"></i><i style="width:15%;height:13px"></i><span style="flex:1"></span><i class="hs" style="width:130px;height:11px"></i><i style="width:56px;height:13px"></i><i style="width:20px;height:20px"></i></div>
+  </div>
+</div>
+<div class="wrap">
+  <div class="top">
+    <div class="brand">
+      <div class="logo"><uk-icon icon="flame" width="26" height="26"></uk-icon></div>
+      <div><h1>Lantern <span class="ver" id="ver"></span></h1><div class="sub num"><span id="host"></span><span id="clock"></span></div></div>
+    </div>
+    <span class="sp"></span>
+    <div class="tools">
+      <div class="seg" id="theme" role="group" aria-label="Theme">
+        <button data-t="system" title="System"><uk-icon icon="monitor" width="15" height="15"></uk-icon></button>
+        <button data-t="light" title="Light"><uk-icon icon="sun" width="15" height="15"></uk-icon></button>
+        <button data-t="dark" title="Dark"><uk-icon icon="moon" width="15" height="15"></uk-icon></button>
+      </div>
+      <span class="sp"></span>
+      <button class="uk-btn uk-btn-default uk-btn-icon" id="termBtn" uk-tooltip="Terminal"><uk-icon icon="square-terminal" width="16" height="16"></uk-icon></button>
+      <button class="uk-btn uk-btn-default uk-btn-icon" id="reloadBtn" uk-tooltip="Refresh"><uk-icon icon="refresh-cw" width="16" height="16"></uk-icon></button>
+      <button class="uk-btn uk-btn-primary" id="addBtn"><span class="ic"><uk-icon icon="plus" width="16" height="16"></uk-icon>Add</span></button>
+    </div>
+  </div>
+
+  <div class="stats" id="sys"></div>
+
+  <div class="uk-card svc">
+    <div class="hd">
+      <h2>Services</h2>
+      <span class="uk-badge uk-badge-secondary" id="count">0</span>
+      <span class="sp"></span>
+      <span class="status" id="upd"></span>
+    </div>
+    <div id="list" class="uk-overflow-auto"></div>
+  </div>
+</div>
+
+<div id="dlg" class="uk-modal" uk-modal="bg-close: false">
+  <div class="uk-modal-dialog">
+    <div class="dh">
+      <span class="dot" id="dDot"></span>
+      <h2 id="dName"></h2>
+      <a class="lnk" id="dLink" target="_blank" rel="noopener"></a>
+      <span class="sp"></span>
+      <button class="uk-btn uk-btn-ghost uk-btn-icon uk-modal-close" type="button" aria-label="Close"><uk-icon icon="x" width="18" height="18"></uk-icon></button>
+    </div>
+    <div class="dbar" id="dbar">
+      <div class="seg" id="tabs">
+        <button data-tab="logs"><uk-icon icon="scroll-text" width="14" height="14"></uk-icon>Logs</button>
+        <button data-tab="usage"><uk-icon icon="chart-line" width="14" height="14"></uk-icon>Usage</button>
+        <button data-tab="term"><uk-icon icon="square-terminal" width="14" height="14"></uk-icon>Terminal</button>
+        <button data-tab="edit"><uk-icon icon="settings-2" width="14" height="14"></uk-icon>Settings</button>
+      </div>
+      <span class="sp"></span>
+      <span class="status" id="paneStatus"></span>
+    </div>
+
+    <div class="pane" data-pane="logs">
+      <pre class="out" id="logs"></pre>
+    </div>
+
+    <div class="pane" data-pane="usage">
+      <div class="row">
+        <div class="seg" id="range"><button data-h="1">1 hour</button><button data-h="6">6 hours</button><button data-h="24">24 hours</button></div>
+      </div>
+      <div class="charts">
+        <figure class="chart" id="chCpu"><figcaption>CPU <span class="now"></span></figcaption><div class="plot"></div></figure>
+        <figure class="chart" id="chMem"><figcaption>Memory <span class="now"></span></figcaption><div class="plot"></div></figure>
+      </div>
+    </div>
+
+    <div class="pane" data-pane="term">
+      <div class="row">
+        <div class="row" id="actions"></div>
+        <span class="sp"></span>
+        <button class="uk-btn uk-btn-ghost uk-btn-sm" id="termNew" uk-tooltip="Close this shell and start a fresh one"><span class="ic"><uk-icon icon="rotate-ccw" width="14" height="14"></uk-icon>New shell</span></button>
+      </div>
+      <div id="term"></div>
+    </div>
+
+    <form class="pane" data-pane="edit" id="editForm" autocomplete="off">
+      <section class="sec">
+        <header><div><h3>Details</h3><p>How it shows in the list.</p></div></header>
+        <div class="body">
+          <div class="f"><label for="fName">Name</label><input class="uk-input" id="fName" name="name" required></div>
+          <div class="f"><label for="fGroup">Group</label><input class="uk-input" id="fGroup" name="group" list="groups" placeholder="optional"></div>
+          <div class="f full"><label for="fLink">Link</label><input class="uk-input mono" id="fLink" name="link" placeholder="http://{host}:8080">
+            <span class="hint">{host} becomes the address you opened this page with. Start with "$ " to use a command's output as the link.</span></div>
+          <div class="f"><label for="fDir">Folder</label><input class="uk-input mono" id="fDir" name="dir" placeholder="~ (commands run here)"></div>
+          <div class="f"><label for="fNote">Note</label><input class="uk-input" id="fNote" name="note" placeholder="optional, only shown here"></div>
+        </div>
+      </section>
+
+      <section class="sec">
+        <header><div><h3>Status and logs</h3><p>Commands are optional and run as your user, in the folder above.</p></div></header>
+        <div class="body">
+          <div class="f full"><label>Fill in for</label>
+            <div class="fill">
+              <select class="uk-select" id="tKind">
+                <option value="user">systemd user service</option>
+                <option value="system">systemd service</option>
+                <option value="podman">podman container</option>
+                <option value="docker">docker container</option>
+                <option value="proc">any process</option>
+              </select>
+              <input class="uk-input mono" id="tName" placeholder="name">
+              <button class="uk-btn uk-btn-secondary" type="button" id="tFill">Fill</button>
+            </div></div>
+          <div class="f full"><label for="fCheck">Is it up?</label><textarea class="uk-textarea" id="fCheck" name="check" rows="1" placeholder="exit 0 = up"></textarea></div>
+          <div class="f"><label for="fLogs">Logs</label><textarea class="uk-textarea" id="fLogs" name="logs" rows="1" placeholder="prints the latest logs"></textarea></div>
+          <div class="f"><label for="fPid">PID</label><textarea class="uk-textarea" id="fPid" name="pid" rows="1" placeholder="prints a PID, for CPU and memory"></textarea></div>
+        </div>
+      </section>
+
+      <section class="sec">
+        <header><div><h3>Buttons</h3><p>Show as text or an icon. Turn on "Table" to put it on the row in the list.</p></div></header>
+        <div style="padding:16px">
+          <div id="acts"></div>
+          <button type="button" class="uk-btn uk-btn-default uk-btn-sm" id="addAct"><span class="ic"><uk-icon icon="plus" width="14" height="14"></uk-icon>Add a button</span></button>
+        </div>
+      </section>
+      <datalist id="groups"></datalist>
+    </form>
+
+    <div class="foot" id="foot">
+      <button class="uk-btn uk-btn-primary" id="saveBtn" form="editForm">Save</button>
+      <button type="button" class="uk-btn uk-btn-ghost" id="cancelBtn">Cancel</button>
+      <span class="sp"></span>
+      <span class="err" id="editErr"></span>
+      <button type="button" class="uk-btn uk-btn-ghost" id="delBtn" style="color:hsl(var(--destructive))"><span class="ic"><uk-icon icon="trash-2" width="14" height="14"></uk-icon>Delete</span></button>
+    </div>
+  </div>
+</div>
+
+<div id="iconDlg" class="uk-modal" uk-modal="stack: true">
+  <div class="uk-modal-dialog uk-modal-body">
+    <div class="row"><h2 class="uk-modal-title" style="font-size:1rem;margin:0">Choose an icon</h2><span class="sp"></span><span class="status" id="iconCount"></span></div>
+    <input class="uk-input" id="iconQ" placeholder="Search, e.g. restart, play, git, download" style="margin-top:12px">
+    <div id="iconGrid"></div>
+  </div>
+</div>
+
+<div id="pinDlg" class="uk-modal" uk-modal="stack: true; bg-close: false">
+  <div class="uk-modal-dialog" style="width:min(360px,calc(100vw - 32px));border-radius:12px">
+    <form id="pinForm">
+      <div class="uk-modal-body">
+        <h2 class="uk-modal-title" style="font-size:1rem;margin:0 0 4px">PIN</h2>
+        <p class="mut" id="pinMsg" style="margin:0 0 12px;font-size:.875rem">Enter the PIN to make changes.</p>
+        <input class="uk-input" type="password" id="pinIn" inputmode="numeric" autocomplete="current-password">
+      </div>
+      <div class="uk-modal-footer" style="display:flex;justify-content:flex-end;gap:8px">
+        <button type="button" class="uk-btn uk-btn-ghost" id="pinCancel">Cancel</button>
+        <button class="uk-btn uk-btn-primary">OK</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script type="module">
+const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const ansi = s => s.replace(/\x1b\[[0-9;?]*[ -\/]*[@-~]/g, "").replace(/\x1b\][^\x07]*\x07/g, "");
+const icon = (n, s = 14) => `<uk-icon icon="${esc(n)}" width="${s}" height="${s}"></uk-icon>`;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const API = "cgi-bin/api";
+const store = {get(k){try{return localStorage.getItem(k)||""}catch{return ""}}, set(k,v){try{localStorage.setItem(k,v)}catch{}}};
+const dlg = UIkit.modal("#dlg"), pinDlg = UIkit.modal("#pinDlg"), iconDlg = UIkit.modal("#iconDlg");
+const toast = (message, status = "primary", timeout = 3000) => UIkit.notification({message, status, pos: "bottom-right", timeout});
+let tok = store.get("lantern-tok"), items = [], cur = null, logTimer = null, skew = null, tz = 0, lastAt = 0;
+
+const mb = b => b == null ? "–" : b >= 1e9 ? (b/1073741824).toFixed(1)+" GB" : Math.round(b/1048576)+" MB";
+const pc = c => c == null ? "–" : c+"%";
+const dur = s => { const d=Math.floor(s/86400), h=Math.floor(s%86400/3600), m=Math.floor(s%3600/60); return (d?d+"d ":"")+(d||h?h+"h ":"")+m+"m"; };
+const linkOf = l => (l||"").replaceAll("{host}", location.hostname);
+const shortLink = l => { try { const u = new URL(l); return u.host + (u.pathname === "/" ? "" : u.pathname); } catch { return l; } };
+const dotOf = up => up === true ? "up" : up === false ? "down" : "";
+// A button as text, or as an icon with its name as the tooltip.
+const btnHtml = (a, cls) => a.icon
+  ? `<button type="button" class="uk-btn uk-btn-ghost uk-btn-icon uk-btn-sm ${cls}" data-n="${a.n}" aria-label="${esc(a.label)}" uk-tooltip="${esc(a.label)}">${icon(a.icon, 16)}</button>`
+  : `<button type="button" class="uk-btn uk-btn-default uk-btn-sm ${cls}" data-n="${a.n}">${esc(a.label)}</button>`;
+
+async function get(a, q = {}) {
+  const r = await fetch(API + "?" + new URLSearchParams({a, ...q}), {cache: "no-store"});
+  return a === "logs" || a === "history" ? r.text() : r.json();
+}
+const send = async (a, body) => (await fetch(API + "?a=" + a, {method: "POST", body: new URLSearchParams(body)})).json();
+// Changes need the PIN, asked once when the page opens. The server answers with a
+// token this browser keeps until the machine reboots or the PIN changes.
+async function post(a, body = {}) {
+  for (;;) {
+    const d = await send(a, {...body, tok});
+    if (d.error === "blocked") { showBlocked(); throw new Error("blocked"); }
+    if (d.error !== "pin") return d;
+    if (!await askPin()) throw new Error("cancelled");
+  }
+}
+let pinWait = null;
+// After 5 wrong PINs the server refuses this device; say so instead of a broken page.
+function showBlocked() {
+  if ($("#blocked")) return;
+  $$(".uk-modal.uk-open").forEach(m => UIkit.modal(m).hide());
+  document.body.insertAdjacentHTML("beforeend", `<div id="blocked"><div class="uk-card uk-card-body">${icon("shield-ban", 32)}
+    <h2>This device is blocked</h2><p class="mut">Too many wrong PINs. It stays blocked for 7 days, or until Lantern is restarted on the server.</p></div></div>`);
+}
+function askPin() {
+  return pinWait ||= new Promise(res => {
+    let done = false;
+    const finish = ok => { if (done) return; done = true; pinWait = null; res(ok); pinDlg.hide(); };
+    const msg = $("#pinMsg"), ok = $("#pinForm button:not([type])");
+    msg.textContent = "Enter the PIN to make changes."; msg.className = "mut";
+    $("#pinIn").value = "";
+    $("#pinForm").onsubmit = async e => {
+      e.preventDefault();
+      ok.disabled = true; ok.innerHTML = `<span uk-spinner="ratio: .5"></span>`;
+      let d = {};
+      try { d = await send("auth", {pin: $("#pinIn").value}); } catch {}
+      ok.disabled = false; ok.textContent = "OK";
+      if (d.token) { tok = d.token; store.set("lantern-tok", tok); finish(true); return; }
+      if (d.error === "blocked") { finish(false); showBlocked(); return; }
+      msg.textContent = d.left != null ? `Wrong PIN. ${d.left} ${d.left === 1 ? "try" : "tries"} left before this device is blocked for 7 days.` : "That PIN didn't work. Try again.";
+      msg.className = "err";
+      $("#pinIn").select();
+    };
+    $("#pinCancel").onclick = () => finish(false);
+    UIkit.util.once("#pinDlg", "hidden", () => finish(false));
+    pinDlg.show().then(() => $("#pinIn").focus());
+  });
+}
+
+// ---- top: stats and clock ----
+// Tooltip settings; the text can't hold ";" (it separates settings).
+const tipAttr = (text, more = "") => esc(`title: ${text.replaceAll(";", ",")}; ${more}delay: 300`);
+// A box at the top: icon, name, value, a line under it, and a 24-hour graph behind.
+// Hovering says what the graph is and its low and high.
+function cell(ic, k, v, s, vals, scale, fmt, what) {
+  const nums = (vals || []).filter(Number.isFinite);
+  const range = nums.length > 1 ? `Low ${fmt(Math.min(...nums))}, high ${fmt(Math.max(...nums))}.` : "Not enough data yet: a point is added every 10 minutes.";
+  const tip = `${what} Graph: last 24 hours, in 10-minute averages. ${range}`;
+  return `<div class="stat" uk-tooltip="${tipAttr(tip, "pos: bottom; ")}">${spark(nums, {w: 200, h: 46, cls: "sbg", ...scale})}` +
+    `<div class="k">${icon(ic, 13)}${k}</div><div class="v">${v}</div><div class="s">${s || "&nbsp;"}</div></div>`;
+}
+function showStats(s, h = {}) {
+  skew = s.now * 1000 - Date.now(); tz = s.tz;
+  $("#host").textContent = s.host + " · "; document.title = `Lantern · ${s.host}`;
+  const pct = (a, b) => b ? Math.round(a / b * 100) : 0, ip = s.ip ? esc(s.ip) : "";
+  const p1 = v => v.toFixed(1) + "%", p0 = v => Math.round(v) + "%";
+  $("#sys").innerHTML = [
+    cell("cpu", "CPU", pc(s.cpu), s.load ? `load ${esc(s.load)}` : "", h.hc, {floor: 10}, p1,
+      "How busy the processor is, across the whole machine."),
+    cell("timer", "Uptime", dur(s.up), "since the last restart", h.hl, {floor: 1}, v => v.toFixed(2),
+      "Time since the last restart. The graph shows the load average: how many tasks were running or waiting. About 1 per CPU core means fully busy."),
+    s.wifi ? cell("wifi", "Wi-Fi", esc(s.wifi), [s.signal != null ? `${s.signal}% signal` : "", ip].filter(Boolean).join(" · "), h.hs, {hi: 100}, p0,
+      "Wi-Fi signal strength. Low or jumpy means a weak connection.")
+           : ip ? cell("network", "IP address", ip, "", [], {}, p0, "This machine's address on your network.") : "",
+    cell("memory-stick", "Memory", mb(s.mem_used), `of ${mb(s.mem_total)} · ${pct(s.mem_used, s.mem_total)}%`, h.hm, {lo: null}, mb,
+      "Memory in use, not counting cache the system can free."),
+    s.battery == null ? "" : cell(/charg|full/i.test(s.charge || "") && !/dis/i.test(s.charge) ? "battery-charging" : "battery", "Battery", s.battery + "%",
+      esc((s.charge || "").toLowerCase()), h.hb, {hi: 100}, p0, "Battery charge."),
+    cell("hard-drive", "Disk", mb(s.disk_used), `of ${mb(s.disk_total)} · ${pct(s.disk_used, s.disk_total)}%`, h.hd, {lo: null}, mb,
+      "Space used on the main disk. A line that keeps climbing means it's filling up."),
+  ].join("");
+  clock();
+}
+const D = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"], M = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"], z = n => String(n).padStart(2, "0");
+function clock() {
+  if (skew == null) return;
+  const t = new Date(Date.now() + skew + tz * 1000), h = t.getUTCHours();
+  $("#clock").textContent = `${D[t.getUTCDay()]} ${t.getUTCDate()} ${M[t.getUTCMonth()]}, ${h%12||12}:${z(t.getUTCMinutes())}:${z(t.getUTCSeconds())} ${h<12?"AM":"PM"}`;
+}
+function ago() {
+  if (!lastAt) return;
+  const s = Math.round((Date.now() - lastAt) / 1000);
+  $("#upd").textContent = s < 5 ? "Updated just now" : `Updated ${s}s ago`;
+}
+setInterval(() => { clock(); ago(); }, 1000);
+
+// ---- the list ----
+async function refresh() {
+  try {
+    const d = await get("list");
+    if (d.error === "blocked") return showBlocked();
+    items = d.items; showStats(d.stats, d.hist); $("#ver").textContent = d.version ? "v" + d.version : ""; render(); lastAt = Date.now(); ago();
+  } catch {}
+}
+const running = new Set();   // "id/n" of row buttons whose command is still going
+function render() {
+  const list = $("#list");
+  $("#count").textContent = items.length;
+  if (!items.length) {
+    list.innerHTML = `<div class="empty"><p class="mut">Nothing here yet. Add the first thing you want to keep an eye on.</p><button class="uk-btn uk-btn-primary" data-add><span class="ic">${icon("plus", 16)}Add</span></button></div>`;
+    return;
+  }
+  const by = {};
+  for (const it of items) (by[it.group] ||= []).push(it);
+  const groups = Object.keys(by).sort((a, b) => (a === "") - (b === "") || a.localeCompare(b));
+  $("#groups").innerHTML = groups.filter(Boolean).map(g => `<option value="${esc(g)}">`).join("");
+  let h = `<table class="uk-table uk-table-hover uk-table-divider uk-table-middle"><thead><tr><th>Name</th><th class="hide-s">Link</th><th class="r hide-s">CPU</th><th class="r">Memory</th><th class="r"></th></tr></thead><tbody>`;
+  for (const g of groups) {
+    if (groups.length > 1 || g) h += `<tr class="grp"><td colspan="5">${esc(g || "Other")}<span class="c">${by[g].length}</span></td></tr>`;
+    for (const it of by[g].sort((a, b) => a.name.localeCompare(b.name))) {
+      const l = linkOf(it.link), st = dotOf(it.up);
+      const acts = it.actions.filter(a => a.table).map(a => rowBtn(it.id, a)).join("");
+      h += `<tr class="it" data-id="${esc(it.id)}" tabindex="0">
+        <td class="nm"><div class="name"><span class="dot ${st}" uk-tooltip="${st === "up" ? "Running" : st === "down" ? "Down" : "Not checked"}"></span><span class="t">${esc(it.name)}</span>${st === "down" ? `<span class="down-tag">Down</span>` : ""}</div></td>
+        <td class="link">${l ? `<a href="${esc(l)}" target="_blank" rel="noopener"><span>${esc(shortLink(l))}</span>${icon("arrow-up-right", 12)}</a>` : ""}</td>
+        <td class="r num cpu" data-l="CPU">${it.cpu == null ? "" : `<div class="mv"><span class="sw" uk-tooltip="${tipAttr("CPU this service used over the last hour, one reading a minute.")}">${spark(it.hc, {floor: 5})}</span><span>${pc(it.cpu)}</span></div>`}</td>
+        <td class="r num mem" data-l="Memory">${it.mem == null ? "" : `<div class="mv"><span class="sw" uk-tooltip="${tipAttr("Memory this service used over the last hour, one reading a minute.")}">${spark(it.hm, {lo: null})}</span><span>${mb(it.mem)}</span></div>`}</td>
+        <td class="r acts"><div class="ra">${acts}</div></td></tr>`;
+    }
+  }
+  list.innerHTML = h + "</tbody></table>";
+}
+// A row button; while its command runs it shows a spinner and can't be pressed again.
+function rowBtn(id, a) {
+  if (!running.has(id + "/" + a.n)) return btnHtml(a, "");
+  return a.icon ? btnHtml({...a, icon: "loader-circle"}, "spin").replace("<button", "<button disabled")
+                : btnHtml(a, "").replace("<button", "<button disabled");
+}
+$("#list").addEventListener("click", e => {
+  if (e.target.closest("a")) return;
+  if (e.target.closest("[data-add]")) return openItem(null);
+  const tr = e.target.closest("tr.it"), b = e.target.closest(".ra button");
+  if (b) return quickRun(tr.dataset.id, +b.dataset.n);
+  if (tr) openItem(tr.dataset.id);
+});
+$("#list").addEventListener("keydown", e => {
+  const tr = e.target.closest("tr.it"); if (tr && e.key === "Enter" && e.target === tr) openItem(tr.dataset.id);
+});
+
+// A button on a row runs in the background, then says how it went.
+async function quickRun(id, n) {
+  const key = id + "/" + n, it = items.find(i => i.id === id), a = it?.actions.find(x => x.n === n);
+  if (!a || running.has(key)) return;
+  const what = `${esc(a.label)} · ${esc(it.name)}`;
+  running.add(key); render();
+  try {
+    const d = await post("run", {id, action: n});
+    if (d.error) { toast(`${what}: ${esc(d.error)}`, "destructive"); return; }
+    for (;;) {
+      await sleep(1000);
+      const j = await post("job", {j: d.job});
+      if (j.error) return;
+      if (j.code == null) continue;
+      if (j.code === 0) toast(`${what} — done`);
+      else toast(`${what} — failed (exit ${j.code})${j.tail ? `<pre class="out" style="margin-top:8px;max-height:120px">${esc(ansi(j.tail))}</pre>` : ""}`, "destructive", 8000);
+      return;
+    }
+  } catch {} finally { running.delete(key); render(); setTimeout(refresh, 1200); }
+}
+
+$("#addBtn").onclick = () => openItem(null);
+$$("#theme button").forEach(b => b.onclick = () => {
+  theme = b.dataset.t; store.set("lantern-theme", theme); applyTheme(); if (term) term.options.theme = termTheme();
+});
+applyTheme();
+$("#reloadBtn").onclick = async () => {
+  const b = $("#reloadBtn"); if (b.disabled) return;
+  b.disabled = true; b.classList.add("spin"); $("#upd").textContent = "Refreshing…";
+  const t = Date.now(); await refresh();
+  await sleep(Math.max(0, 500 - (Date.now() - t)));
+  b.disabled = false; b.classList.remove("spin");
+};
+
+// ---- details window ----
+function tab(name) {
+  $$("#tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === name));
+  $$("#dlg .pane").forEach(p => p.hidden = p.dataset.pane !== name);
+  $("#dbar").hidden = !cur;
+  $("#foot").hidden = name !== "edit";
+  $("#paneStatus").textContent = "";
+  if (name === "logs") follow(); else stopFollow();
+  if (name === "term") termStart(); else termStop();
+  if (name === "usage") usageStart(); else usageStop();
+  if (name === "edit") fillEdit();
+}
+$$("#tabs button").forEach(b => b.onclick = () => tab(b.dataset.tab));
+UIkit.util.on("#dlg", "hidden", e => { if (e.target.id !== "dlg") return; stopFollow(); termStop(); usageStop(); refresh(); });
+
+function openItem(id) {
+  cur = id ? items.find(i => i.id === id) : null;
+  header();
+  dlg.show();
+  tab(cur ? (cur.logs ? "logs" : "term") : "edit");
+}
+// The plain terminal from the top bar: a shell in your home folder.
+function openTerm() {
+  cur = null; header(); $("#dName").textContent = "Terminal";
+  dlg.show(); tab("term");
+}
+function header() {
+  $("#dName").textContent = cur ? cur.name : "Add a service";
+  $("#dDot").className = "dot " + dotOf(cur?.up);
+  $("#dDot").hidden = !cur;
+  const l = linkOf(cur?.link);
+  $("#dLink").hidden = !l; $("#dLink").href = l || "#"; $("#dLink").innerHTML = l ? `<span>${esc(shortLink(l))}</span>${icon("arrow-up-right", 12)}` : "";
+  $("#actions").innerHTML = (cur?.actions || []).map(a => btnHtml(a, "")).join("") ||
+    (cur ? `<span class="status">Buttons you add in Settings (Restart, Deploy…) show here and run in this terminal.</span>` : "");
+}
+
+// ---- graphs ----
+// A small line for the last hour. lo/hi fix the scale (lo: null = fit to the data);
+// floor keeps a near-idle CPU looking flat instead of spiky.
+function spark(vals, {w = 72, h = 22, lo = 0, hi = null, floor = 0, cls = ""} = {}) {
+  if (!vals || vals.length < 2) return "";
+  let a = lo ?? Math.min(...vals), b = hi ?? Math.max(floor, ...vals);
+  if (lo === null) { const pad = (b - a) * .2 || b * .05 || 1; a -= pad; b += pad; }
+  if (b <= a) b = a + 1;
+  const x = i => (i / (vals.length - 1) * w).toFixed(1), y = v => (h - 1 - (Math.min(v, b) - a) / (b - a) * (h - 2)).toFixed(1);
+  const line = vals.map((v, i) => (i ? "L" : "M") + x(i) + "," + y(v)).join("");
+  return `<svg class="spark ${cls}" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">` +
+    `<path class="a" d="${line}L${w},${h}L0,${h}Z"/><path class="l" d="${line}"/></svg>`;
+}
+
+// Usage tab: CPU and memory over 1, 6 or 24 hours, from what the server recorded.
+let uTimer = null, uHours = +store.get("lantern-range") || 6, uData = [];
+const niceMax = v => { const p = 10 ** Math.floor(Math.log10(v)), n = v / p; return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * p; };
+const hm = t => { const d = new Date((t + tz) * 1000), h = d.getUTCHours(); return `${h % 12 || 12}:${z(d.getUTCMinutes())} ${h < 12 ? "AM" : "PM"}`; };
+const cpuFmt = v => (v < 10 ? v.toFixed(2) : v.toFixed(1)) + "%";
+
+function drawChart(fig, pts, fmt, floor) {
+  const plot = fig.querySelector(".plot"), W = plot.clientWidth, H = plot.clientHeight;
+  fig.querySelector(".now").textContent = pts.length ? fmt(pts[pts.length - 1].v) : "";
+  if (!W) return;
+  if (pts.length < 2) {
+    plot.innerHTML = `<div class="nodata">${cur && !cur.hc.length && cur.mem == null
+      ? "Add a PID command in Settings to record CPU and memory."
+      : "Recording once a minute. The graph fills in over the next few minutes."}</div>`;
+    return;
+  }
+  const m = {l: 52, r: 6, t: 6, b: 22}, iw = W - m.l - m.r, ih = H - m.t - m.b;
+  const t1 = pts[pts.length - 1].t, t0 = t1 - uHours * 3600;
+  const top = niceMax(Math.max(floor, ...pts.map(p => p.v)) * 1.05);
+  const X = t => m.l + (t - t0) / (t1 - t0) * iw, Y = v => m.t + ih - v / top * ih;
+  let line = "", area = "", seg = [];
+  const flush = () => { if (seg.length > 1) { const d = seg.map((p, i) => (i ? "L" : "M") + X(p.t).toFixed(1) + "," + Y(p.v).toFixed(1)).join("");
+    line += d; area += d + `L${X(seg[seg.length - 1].t).toFixed(1)},${Y(0)}L${X(seg[0].t).toFixed(1)},${Y(0)}Z`; } seg = []; };
+  pts.forEach((p, i) => { if (i && p.t - pts[i - 1].t > 180) flush(); seg.push(p); });   // a gap means it wasn't running
+  flush();
+  const nx = W < 420 ? 3 : 4, ys = [0, top / 2, top], xs = Array.from({length: nx}, (_, i) => t0 + (t1 - t0) * i / (nx - 1));
+  plot.innerHTML = `<svg width="${W}" height="${H}">
+    ${ys.map(v => `<line class="grid" x1="${m.l}" x2="${W - m.r}" y1="${Y(v)}" y2="${Y(v)}"/><text class="ax" x="${m.l - 8}" y="${Y(v) + 4}" text-anchor="end">${fmt(v)}</text>`).join("")}
+    ${xs.map((t, i) => `<text class="ax" x="${X(t)}" y="${H - 4}" text-anchor="${i === 0 ? "start" : i === nx - 1 ? "end" : "middle"}">${hm(t)}</text>`).join("")}
+    <path class="a" d="${area}"/><path class="l" d="${line}"/>
+    <g class="hov" visibility="hidden"><line class="cross" y1="${m.t}" y2="${m.t + ih}"/><circle class="pt" r="4"/></g>
+    <rect x="${m.l}" y="0" width="${iw}" height="${H}" fill="transparent"/></svg><div class="tip" hidden></div>`;
+  const svg = plot.querySelector("svg"), hov = svg.querySelector(".hov"), tip = plot.querySelector(".tip");
+  const show = e => {
+    const r = svg.getBoundingClientRect(), t = t0 + (e.clientX - r.left - m.l) / iw * (t1 - t0);
+    let lo = 0, hi = pts.length - 1;
+    while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (pts[mid].t < t) lo = mid; else hi = mid; }
+    const p = Math.abs(pts[lo].t - t) < Math.abs(pts[hi].t - t) ? pts[lo] : pts[hi], px = X(p.t), py = Y(p.v);
+    hov.setAttribute("visibility", "visible");
+    hov.querySelector("line").setAttribute("x1", px); hov.querySelector("line").setAttribute("x2", px);
+    hov.querySelector("circle").setAttribute("cx", px); hov.querySelector("circle").setAttribute("cy", py);
+    tip.hidden = false; tip.innerHTML = `<b>${fmt(p.v)}</b> · ${hm(p.t)}`;
+    tip.style.left = Math.min(Math.max(px - tip.offsetWidth / 2, 0), W - tip.offsetWidth) + "px";
+    tip.style.top = Math.max(py - tip.offsetHeight - 10, 0) + "px";
+  };
+  svg.addEventListener("pointermove", show);
+  svg.addEventListener("pointerdown", show);
+  svg.addEventListener("pointerleave", () => { hov.setAttribute("visibility", "hidden"); tip.hidden = true; });
+}
+function drawUsage() {
+  drawChart($("#chCpu"), uData.map(p => ({t: p[0], v: p[1]})), cpuFmt, 5);
+  drawChart($("#chMem"), uData.map(p => ({t: p[0], v: p[2]})), mb, 1048576 * 10);
+}
+async function loadUsage(me) {
+  try {
+    const t = await get("history", {id: cur.id, h: uHours});
+    if (uTimer !== me) return;
+    uData = t.trim().split("\n").filter(Boolean).map(l => l.split(" ").map(Number));
+    drawUsage();
+  } catch {}
+}
+async function usageStart() {
+  usageStop();
+  const me = uTimer = {};
+  $$("#range button").forEach(b => b.classList.toggle("on", +b.dataset.h === uHours));
+  $$(".chart .plot").forEach(p => p.innerHTML = `<span class="sk" style="height:100%"></span>`);
+  while (uTimer === me && cur) { await loadUsage(me); await sleep(60000); }
+}
+function usageStop() { uTimer = null; }
+$$("#range button").forEach(b => b.onclick = () => { uHours = +b.dataset.h; store.set("lantern-range", uHours); usageStart(); });
+new ResizeObserver(() => { if (uTimer && uData.length) drawUsage(); }).observe($("#chCpu"));
+
+// logs: reloaded every second while the tab is open (one request at a time)
+async function loadLogs(me) {
+  if (!cur) return;
+  const pre = $("#logs"), atEnd = pre.scrollHeight - pre.scrollTop - pre.clientHeight < 40;
+  try {
+    const t = ansi(await get("logs", {id: cur.id}));
+    if (logTimer !== me) return;
+    pre.textContent = t;
+    $("#paneStatus").innerHTML = `<span class="ic"><span class="dot up"></span>Live</span>`;
+    if (atEnd || !pre.dataset.seen) pre.scrollTop = pre.scrollHeight;
+    pre.dataset.seen = 1;
+  } catch { if (logTimer === me) $("#paneStatus").textContent = "Couldn't load"; }
+}
+async function follow() {
+  stopFollow();
+  const me = logTimer = {};
+  $("#logs").innerHTML = `<div style="display:flex;flex-direction:column;gap:9px">${[80,65,90,50,75,85,60].map(w => `<span class="sk" style="width:${w}%"></span>`).join("")}</div>`;
+  while (logTimer === me) { await loadLogs(me); await sleep(1000); }
+}
+function stopFollow() { logTimer = null; delete $("#logs").dataset.seen; }
+
+// terminal: xterm.js (loaded the first time it's needed) talking to a shell on the server.
+const XT = "https://cdn.jsdelivr.net/npm/@xterm/";
+let xtLoad, term, fit, tSess = null, tOff = 0, tGen = 0, tEnded = false, tQueue = Promise.resolve(), tBuf = "", tTimer = null;
+const addScript = src => new Promise((ok, bad) => { const e = document.createElement("script"); e.src = src; e.onload = ok; e.onerror = bad; document.head.append(e); });
+function loadXterm() {
+  return xtLoad ||= (async () => {
+    const l = document.createElement("link"); l.rel = "stylesheet"; l.href = XT + "xterm@5.5.0/css/xterm.css"; document.head.append(l);
+    await addScript(XT + "xterm@5.5.0/lib/xterm.js");
+    await addScript(XT + "addon-fit@0.10.0/lib/addon-fit.js");
+  })();
+}
+function termTheme() {
+  const cs = getComputedStyle(document.body), fg = cs.color;
+  return {background: "rgba(0,0,0,0)", foreground: fg, cursor: fg, cursorAccent: cs.backgroundColor,
+          selectionBackground: document.documentElement.classList.contains("dark") ? "rgba(255,255,255,.25)" : "rgba(0,0,0,.18)"};
+}
+const tStatus = t => $("#paneStatus").textContent = t;
+// Keys go out in order, a few at a time.
+function tSend(body) { tQueue = tQueue.then(() => post("term_write", {s: tSess, ...body})).catch(() => {}); return tQueue; }
+function tFlush() { const d = tBuf; tBuf = ""; if (d) tSend({d}); }
+
+async function termStart(fresh = false) {
+  const me = ++tGen, s = cur ? cur.id : "_home";
+  tStatus("Connecting…");
+  try { await loadXterm(); } catch { tStatus("Couldn't load the terminal (needs internet)"); return; }
+  if (tGen !== me) return;
+  if (!term) {
+    term = new Terminal({fontFamily: "ui-monospace,SFMono-Regular,Menlo,monospace", fontSize: 13, cursorBlink: true, scrollback: 5000, allowTransparency: true, theme: termTheme()});
+    fit = new FitAddon.FitAddon(); term.loadAddon(fit); term.open($("#term"));
+    term.onData(d => {
+      if (tEnded) { if (d.includes("\r")) termStart(); return; }
+      tBuf += d; clearTimeout(tTimer); tTimer = setTimeout(tFlush, 8);
+    });
+    term.onResize(({cols, rows}) => { if (tSess && !tEnded) post("term_resize", {s: tSess, cols, rows}).catch(() => {}); });
+    new ResizeObserver(() => { if ($("#term").offsetParent) fit.fit(); }).observe($("#term"));
+  }
+  term.options.theme = termTheme();
+  fit.fit(); term.reset(); tSess = s; tOff = 0; tEnded = false;
+  let d;
+  try {
+    if (fresh) await post("term_close", {s});
+    d = await post("term_open", {s, id: cur?.id || "", cols: term.cols, rows: term.rows});
+  } catch { tStatus(""); return; }
+  if (tGen !== me) return;
+  if (d.error) { tStatus(d.error); return; }
+  post("term_resize", {s, cols: term.cols, rows: term.rows}).catch(() => {});
+  tStatus(""); term.focus();
+  while (tGen === me) {
+    let r;
+    try { r = await fetch(API + "?a=term_read", {method: "POST", body: new URLSearchParams({s, o: tOff, tok})}); }
+    catch { tStatus("Reconnecting…"); await sleep(1000); continue; }
+    if (tGen !== me) return;
+    if (r.headers.get("X-Error") === "blocked") return showBlocked();
+    if (r.headers.get("X-Error") === "pin") { if (!await askPin()) return; continue; }
+    const buf = new Uint8Array(await r.arrayBuffer());
+    if (tGen !== me) return;
+    tStatus("");
+    if (r.headers.get("X-Reset") === "1") term.reset();
+    if (buf.length) term.write(buf);
+    tOff = +r.headers.get("X-Off") || 0;
+    if (r.headers.get("X-Alive") !== "1") {
+      tEnded = true;
+      term.write("\r\n\x1b[2m[shell closed · press Enter to start a new one]\x1b[0m\r\n");
+      return;
+    }
+  }
+}
+function termStop() { tGen++; }
+$("#termNew").onclick = () => termStart(true);
+$("#termBtn").onclick = openTerm;
+// In the terminal tab a button types its command into the shell, so you see it run and can answer prompts.
+$("#actions").onclick = e => {
+  const b = e.target.closest("button"); if (!b || !tSess || tEnded) return;
+  tSend({id: cur?.id || "", action: b.dataset.n}); term.focus();
+};
+dm.addEventListener("change", () => term && (term.options.theme = termTheme()));
+
+// ---- settings ----
+const TPL = {
+  user:   n => ({check:`systemctl --user is-active -q ${n}`, logs:`journalctl --user -u ${n} -n 300 --no-pager -o short-iso`, pid:`systemctl --user show -p MainPID --value ${n}`,
+                 acts:[["Restart",`systemctl --user restart ${n}`],["Stop",`systemctl --user stop ${n}`],["Start",`systemctl --user start ${n}`]]}),
+  system: n => ({check:`systemctl is-active -q ${n}`, logs:`journalctl -u ${n} -n 300 --no-pager -o short-iso`, pid:`systemctl show -p MainPID --value ${n}`,
+                 acts:[["Restart",`sudo -n systemctl restart ${n}`],["Stop",`sudo -n systemctl stop ${n}`],["Start",`sudo -n systemctl start ${n}`]]}),
+  podman: n => ({check:`[ "$(podman inspect -f '{{.State.Running}}' ${n})" = true ]`, logs:`podman logs --tail 300 ${n} 2>&1`, pid:`podman inspect -f '{{.State.Pid}}' ${n}`,
+                 acts:[["Restart",`podman restart ${n}`],["Stop",`podman stop ${n}`],["Start",`podman start ${n}`]]}),
+  docker: n => ({check:`[ "$(docker inspect -f '{{.State.Running}}' ${n})" = true ]`, logs:`docker logs --tail 300 ${n} 2>&1`, pid:`docker inspect -f '{{.State.Pid}}' ${n}`,
+                 acts:[["Restart",`docker restart ${n}`],["Stop",`docker stop ${n}`],["Start",`docker start ${n}`]]}),
+  proc:   n => ({check:`pgrep -f '${n}' >/dev/null`, logs:"", pid:`pgrep -of '${n}'`, acts:[["Stop",`pkill -f '${n}'`]]}),
+};
+// Template buttons: Restart goes on the table as an icon; the others stay in the window.
+const TPL_ICON = {Restart: ["rotate-cw", true], Stop: ["square", false], Start: ["play", false]};
+$("#tFill").onclick = () => {
+  const n = $("#tName").value.trim(); if (!n) { $("#tName").focus(); return; }
+  const t = TPL[$("#tKind").value](n), f = $("#editForm");
+  f.check.value = t.check; f.logs.value = t.logs; f.pid.value = t.pid;
+  if (!f.name.value) f.name.value = n;
+  $("#acts").innerHTML = "";
+  t.acts.forEach(([l, c]) => addAct({label: l, cmd: c, icon: TPL_ICON[l]?.[0] || "", table: TPL_ICON[l]?.[1] || false}));
+};
+
+// One button in the form: Text/Icon, the icon, its name, On table, and the command.
+function addAct(a = {}) {
+  const row = document.createElement("div"); row.className = "act";
+  row.dataset.icon = a.icon || "";
+  row.innerHTML = `
+    <div class="seg mode"><button type="button" data-m="text">Text</button><button type="button" data-m="icon">Icon</button></div>
+    <button type="button" class="uk-btn uk-btn-default icbtn pick" uk-tooltip="Choose an icon"></button>
+    <input class="uk-input lbl" placeholder="Name, e.g. Restart" value="${esc(a.label)}">
+    <label class="tbl"><input class="uk-toggle-switch uk-toggle-switch-primary ontbl" type="checkbox"${a.table ? " checked" : ""}> Table</label>
+    <button type="button" class="uk-btn uk-btn-ghost uk-btn-icon rm" aria-label="Remove" uk-tooltip="Remove">${icon("trash-2", 15)}</button>
+    <textarea class="uk-textarea cmd" rows="1" placeholder="command (several lines are fine)">${esc(a.cmd)}</textarea>`;
+  const sync = () => {
+    const m = row.dataset.mode;
+    row.querySelectorAll(".mode button").forEach(b => b.classList.toggle("on", b.dataset.m === m));
+    const p = row.querySelector(".pick"); p.style.visibility = m === "icon" ? "" : "hidden";
+    p.innerHTML = row.dataset.icon ? icon(row.dataset.icon, 18) : icon("image-plus", 16);
+  };
+  row.dataset.mode = a.icon ? "icon" : "text";
+  row.querySelectorAll(".mode button").forEach(b => b.onclick = () => {
+    row.dataset.mode = b.dataset.m; sync();
+    if (b.dataset.m === "icon" && !row.dataset.icon) pickIcon(row, sync);
+  });
+  row.querySelector(".pick").onclick = () => pickIcon(row, sync);
+  row.querySelector(".rm").onclick = () => row.remove();
+  sync();
+  $("#acts").append(row);
+  grow(row.querySelector(".cmd"));
+}
+$("#addAct").onclick = () => { addAct({table: true}); $("#acts").lastElementChild.querySelector(".lbl").focus(); };
+
+// Icon picker: every icon Franken UI ships (Lucide), searchable.
+const ICONS = "a-arrow-down a-arrow-up a-large-small accessibility activity activity-square air-vent airplay alarm-check alarm-clock alarm-clock-minus alarm-clock-off alarm-clock-plus alarm-smoke album alert-circle alert-octagon alert-triangle align-center align-center-horizontal align-center-vertical align-end-horizontal align-end-vertical align-horizontal-distribute-center align-horizontal-distribute-end align-horizontal-distribute-start align-horizontal-justify-center align-horizontal-justify-end align-horizontal-justify-start align-horizontal-space-around align-horizontal-space-between align-justify align-left align-right align-start-horizontal align-start-vertical align-vertical-distribute-center align-vertical-distribute-end align-vertical-distribute-start align-vertical-justify-center align-vertical-justify-end align-vertical-justify-start align-vertical-space-around align-vertical-space-between ambulance ampersand ampersands amphora anchor angry annoyed antenna anvil aperture app-window app-window-mac apple archive archive-restore archive-x area-chart armchair arrow-big-down arrow-big-down-dash arrow-big-left arrow-big-left-dash arrow-big-right arrow-big-right-dash arrow-big-up arrow-big-up-dash arrow-down arrow-down01 arrow-down10 arrow-down-az arrow-down-circle arrow-down-from-line arrow-down-left arrow-down-left-from-circle arrow-down-left-from-square arrow-down-left-square arrow-down-narrow-wide arrow-down-right arrow-down-right-from-circle arrow-down-right-from-square arrow-down-right-square arrow-down-square arrow-down-to-dot arrow-down-to-line arrow-down-up arrow-down-wide-narrow arrow-down-za arrow-left arrow-left-circle arrow-left-from-line arrow-left-right arrow-left-square arrow-left-to-line arrow-right arrow-right-circle arrow-right-from-line arrow-right-left arrow-right-square arrow-right-to-line arrow-up arrow-up01 arrow-up10 arrow-up-az arrow-up-circle arrow-up-down arrow-up-from-dot arrow-up-from-line arrow-up-left arrow-up-left-from-circle arrow-up-left-from-square arrow-up-left-square arrow-up-narrow-wide arrow-up-right arrow-up-right-from-circle arrow-up-right-from-square arrow-up-right-square arrow-up-square arrow-up-to-line arrow-up-wide-narrow arrow-up-za arrows-up-from-line asterisk asterisk-square at-sign atom audio-lines audio-waveform award axe axis3-d baby backpack badge badge-alert badge-cent badge-check badge-dollar-sign badge-euro badge-help badge-indian-rupee badge-info badge-japanese-yen badge-minus badge-percent badge-plus badge-pound-sterling badge-russian-ruble badge-swiss-franc badge-turkish-lira badge-x baggage-claim balloon ban banana bandage banknote banknote-arrow-down banknote-arrow-up banknote-x bar-chart bar-chart2 bar-chart3 bar-chart4 bar-chart-big bar-chart-horizontal bar-chart-horizontal-big barcode barrel baseline bath battery battery-charging battery-full battery-low battery-medium battery-plus battery-warning beaker bean bean-off bed bed-double bed-single beef beer beer-off bell bell-dot bell-electric bell-minus bell-off bell-plus bell-ring between-horizonal-end between-horizonal-start between-vertical-end between-vertical-start biceps-flexed bike binary binoculars biohazard bird birdhouse bitcoin blend blinds blocks bluetooth bluetooth-connected bluetooth-off bluetooth-searching bold bolt bomb bone book book-a book-alert book-audio book-check book-copy book-dashed book-down book-headphones book-heart book-image book-key book-lock book-marked book-minus book-open book-open-check book-open-text book-plus book-search book-text book-type book-up book-up2 book-user book-x bookmark bookmark-check bookmark-minus bookmark-plus bookmark-x boom-box bot bot-message-square bot-off bottle-wine bow-arrow box box-select boxes braces brackets brain brain-circuit brain-cog brick-wall brick-wall-fire brick-wall-shield briefcase briefcase-business briefcase-conveyor-belt briefcase-medical bring-to-front brush brush-cleaning bubbles bug bug-off bug-play building building2 bus bus-front cable cable-car cake cake-slice calculator calendar calendar1 calendar-arrow-down calendar-arrow-up calendar-check calendar-check2 calendar-clock calendar-cog calendar-days calendar-fold calendar-heart calendar-minus calendar-minus2 calendar-off calendar-plus calendar-plus2 calendar-range calendar-search calendar-sync calendar-x calendar-x2 calendars camera camera-off candlestick-chart candy candy-cane candy-off cannabis cannabis-off captions captions-off car car-front car-taxi-front caravan card-sim carrot case-lower case-sensitive case-upper cassette-tape cast castle cat cctv chart-bar-decreasing chart-bar-increasing chart-bar-stacked chart-column-decreasing chart-column-stacked chart-gantt chart-line chart-network chart-no-axes-column-decreasing chart-no-axes-combined chart-no-axes-gantt chart-pie chart-scatter chart-spline check check-check check-circle check-circle2 check-line check-square check-square2 chef-hat cherry chess-bishop chess-king chess-knight chess-pawn chess-queen chess-rook chevron-down chevron-down-circle chevron-down-square chevron-first chevron-last chevron-left chevron-left-circle chevron-left-square chevron-right chevron-right-circle chevron-right-square chevron-up chevron-up-circle chevron-up-square chevrons-down chevrons-down-up chevrons-left chevrons-left-right chevrons-left-right-ellipsis chevrons-right chevrons-right-left chevrons-up chevrons-up-down chrome church cigarette cigarette-off circle circle-dashed circle-divide circle-dollar-sign circle-dot circle-dot-dashed circle-ellipsis circle-equal circle-fading-arrow-up circle-fading-plus circle-gauge circle-help circle-minus circle-off circle-parking circle-parking-off circle-pause circle-percent circle-pile circle-play circle-plus circle-pound-sterling circle-power circle-slash circle-slash2 circle-small circle-star circle-stop circle-user circle-user-round circle-x circuit-board citrus clapperboard clipboard clipboard-check clipboard-clock clipboard-copy clipboard-edit clipboard-list clipboard-minus clipboard-paste clipboard-pen-line clipboard-plus clipboard-type clipboard-x clock clock1 clock10 clock11 clock12 clock2 clock3 clock4 clock5 clock6 clock7 clock8 clock9 clock-alert clock-arrow-down clock-arrow-up clock-check clock-fading clock-plus closed-caption cloud cloud-alert cloud-backup cloud-check cloud-cog cloud-download cloud-drizzle cloud-fog cloud-hail cloud-lightning cloud-moon cloud-moon-rain cloud-off cloud-rain cloud-rain-wind cloud-snow cloud-sun cloud-sun-rain cloud-sync cloud-upload cloudy clover club code code2 code-square codepen codesandbox coffee cog coins columns columns3 columns3-cog columns4 combine command compass component computer concierge-bell cone construction contact contact2 container contrast cookie cooking-pot copy copy-check copy-minus copy-plus copy-slash copy-x copyleft copyright corner-down-left corner-down-right corner-left-down corner-left-up corner-right-down corner-right-up corner-up-left corner-up-right cpu creative-commons credit-card croissant crop cross crosshair crown cuboid cup-soda currency cylinder dam database database-backup database-zap decimals-arrow-left decimals-arrow-right delete dessert diameter diamond diamond-minus diamond-percent diamond-plus dice1 dice2 dice3 dice4 dice5 dice6 dices diff disc disc2 disc3 disc-album divide divide-square dna dna-off dock dog dollar-sign donut door-closed door-closed-locked door-open dot dot-square download drafting-compass drama dribbble drill drone droplet droplet-off droplets drum drumstick dumbbell ear ear-off earth earth-lock eclipse edit edit2 edit3 egg egg-fried egg-off ellipsis ellipsis-vertical equal equal-approximately equal-not equal-square eraser ethernet-port euro ev-charger expand external-link eye eye-closed eye-off facebook factory fan fast-forward feather fence ferris-wheel figma file file-archive file-audio file-axis3-d file-badge file-bar-chart file-bar-chart2 file-box file-braces file-braces-corner file-chart-line file-chart-pie file-check file-check2 file-clock file-code file-code2 file-cog file-diff file-digit file-down file-edit file-exclamation-point file-heart file-image file-input file-key file-lock file-minus file-minus2 file-music file-output file-pen-line file-play file-plus file-plus2 file-question file-scan file-search file-search2 file-signal file-sliders file-spreadsheet file-stack file-symlink file-terminal file-text file-type file-type2 file-up file-user file-video2 file-volume file-x file-x2 files film filter filter-x fingerprint fire-extinguisher fish fish-off fish-symbol fishing-hook flag flag-off flag-triangle-left flag-triangle-right flame flame-kindling flashlight flashlight-off flask-conical flask-conical-off flask-round flip-horizontal flip-horizontal2 flip-vertical flip-vertical2 flower flower2 focus fold-horizontal fold-vertical folder folder-archive folder-check folder-clock folder-closed folder-code folder-cog folder-dot folder-down folder-edit folder-git folder-git2 folder-heart folder-input folder-kanban folder-key folder-lock folder-minus folder-open folder-open-dot folder-output folder-plus folder-root folder-search folder-search2 folder-symlink folder-sync folder-tree folder-up folder-x folders footprints fork-knife fork-knife-crossed forklift form form-input forward frame framer frown fuel fullscreen function-square funnel-plus gallery-horizontal gallery-horizontal-end gallery-thumbnails gallery-vertical gallery-vertical-end gamepad gamepad2 gamepad-directional gantt-chart-square gauge gavel gem georgian-lari ghost gift git-branch git-branch-minus git-branch-plus git-commit git-commit-vertical git-compare git-compare-arrows git-fork git-graph git-merge git-pull-request git-pull-request-arrow git-pull-request-closed git-pull-request-create git-pull-request-create-arrow git-pull-request-draft github gitlab glass-water glasses globe globe-lock goal gpu grab graduation-cap grape grid grid2-x2 grid2-x2-check grid2-x2-plus grid2-x2-x grid3x2 grip grip-horizontal grip-vertical group guitar ham hamburger hammer hand hand-coins hand-fist hand-heart hand-helping hand-metal hand-platter handbag handshake hard-drive hard-drive-download hard-drive-upload hard-hat hash hat-glasses haze hd hdmi-port heading heading1 heading2 heading3 heading4 heading5 heading6 headphone-off headphones headset heart heart-crack heart-handshake heart-minus heart-off heart-plus heart-pulse heater helicopter hexagon highlighter history home hop hop-off hospital hotel hourglass house-heart house-plug house-plus house-wifi ice-cream ice-cream2 id-card id-card-lanyard image image-down image-minus image-off image-play image-plus image-up image-upscale images import inbox indent indent-decrease indian-rupee infinity info inspect inspection-panel instagram italic iteration-ccw iteration-cw japanese-yen joystick kanban kanban-square kanban-square-dashed kayak key key-round key-square keyboard keyboard-music keyboard-off lamp lamp-ceiling lamp-desk lamp-floor lamp-wall-down lamp-wall-up land-plot landmark languages laptop laptop2 laptop-minimal-check lasso lasso-select laugh layers layers2 layers-plus layout layout-dashboard layout-grid layout-list layout-panel-left layout-panel-top layout-template leaf leafy-green lectern letter-text library library-big library-square life-buoy ligature lightbulb lightbulb-off line-squiggle link link2 link2-off linkedin list list-check list-checks list-chevrons-down-up list-chevrons-up-down list-collapse list-end list-filter list-filter-plus list-minus list-music list-ordered list-plus list-restart list-start list-todo list-tree list-video list-x loader loader2 loader-pinwheel locate locate-fixed locate-off location-edit lock lock-keyhole lock-keyhole-open lock-open log-in log-out logs lollipop luggage m-square magnet mail mail-check mail-minus mail-open mail-plus mail-question mail-search mail-warning mail-x mailbox mails map map-minus map-pin map-pin-check map-pin-check-inside map-pin-house map-pin-minus map-pin-minus-inside map-pin-off map-pin-plus map-pin-plus-inside map-pin-x map-pin-x-inside map-pinned map-plus mars mars-stroke martini maximize maximize2 medal megaphone megaphone-off meh memory-stick menu menu-square merge message-circle message-circle-code message-circle-dashed message-circle-heart message-circle-more message-circle-off message-circle-plus message-circle-question message-circle-reply message-circle-warning message-circle-x message-square message-square-code message-square-dashed message-square-diff message-square-dot message-square-heart message-square-lock message-square-more message-square-off message-square-plus message-square-quote message-square-reply message-square-share message-square-text message-square-warning message-square-x messages-square mic mic2 mic-off microchip microscope microwave milestone milk milk-off minimize minimize2 minus minus-square monitor monitor-check monitor-cloud monitor-cog monitor-dot monitor-down monitor-off monitor-pause monitor-play monitor-smartphone monitor-speaker monitor-stop monitor-up monitor-x moon moon-star motorbike mountain mountain-snow mouse mouse-off mouse-pointer mouse-pointer2 mouse-pointer2-off mouse-pointer-ban mouse-pointer-click mouse-pointer-square-dashed move move3-d move-diagonal move-diagonal2 move-down move-down-left move-down-right move-horizontal move-left move-right move-up move-up-left move-up-right move-vertical music music2 music3 music4 navigation navigation2 navigation2-off navigation-off network newspaper nfc non-binary notebook notebook-pen notebook-tabs notebook-text notepad-text notepad-text-dashed nut nut-off octagon octagon-minus octagon-pause octagon-x omega option orbit origami package package2 package-check package-minus package-open package-plus package-search package-x paint-bucket paint-roller paintbrush paintbrush2 palette palmtree panda panel-bottom panel-bottom-close panel-bottom-dashed panel-bottom-open panel-left panel-left-close panel-left-dashed panel-left-open panel-left-right-dashed panel-right panel-right-close panel-right-dashed panel-right-open panel-top panel-top-bottom-dashed panel-top-close panel-top-dashed panel-top-open panels-left-bottom panels-right-bottom panels-top-bottom paperclip parentheses parking-meter parking-square parking-square-off party-popper pause paw-print pc-case pen-off pen-tool pencil pencil-line pencil-off pencil-ruler pentagon percent percent-square person-standing philippine-peso phone phone-call phone-forwarded phone-incoming phone-missed phone-off phone-outgoing pi pi-square piano pickaxe picture-in-picture picture-in-picture2 piggy-bank pilcrow pilcrow-left pilcrow-right pilcrow-square pill pill-bottle pin pin-off pipette pizza plane plane-landing plane-takeoff play play-square plug plug2 plug-zap plus plus-square pocket pocket-knife podcast pointer pointer-off popcorn popsicle pound-sterling power power-off power-square presentation printer printer-check projector proportions puzzle pyramid qr-code quote rabbit radar radiation radical radio radio-receiver radio-tower radius rail-symbol rainbow rat ratio receipt receipt-cent receipt-euro receipt-indian-rupee receipt-japanese-yen receipt-pound-sterling receipt-russian-ruble receipt-swiss-franc receipt-text receipt-turkish-lira rectangle-circle rectangle-goggles rectangle-horizontal rectangle-vertical recycle redo redo2 redo-dot refresh-ccw refresh-ccw-dot refresh-cw refresh-cw-off refrigerator regex remove-formatting repeat repeat1 repeat2 replace replace-all reply reply-all rewind ribbon rocket rocking-chair roller-coaster rose rotate3-d rotate-ccw rotate-ccw-key rotate-ccw-square rotate-cw rotate-cw-square route route-off router rows rows4 rss ruler ruler-dimension-line russian-ruble sailboat salad sandwich satellite satellite-dish saudi-riyal save save-all save-off scale scale3-d scaling scan scan-barcode scan-eye scan-face scan-heart scan-line scan-qr-code scan-search scan-text school school2 scissors scissors-line-dashed scissors-square scissors-square-dashed-bottom scooter screen-share screen-share-off scroll scroll-text search search-alert search-check search-code search-slash search-x section send send-horizonal send-to-back separator-horizontal separator-vertical server server-cog server-crash server-off settings settings2 shapes share share2 sheet shell shield shield-alert shield-ban shield-check shield-close shield-ellipsis shield-half shield-minus shield-off shield-plus shield-question shield-user ship ship-wheel shirt shopping-bag shopping-basket shopping-cart shovel shower-head shredder shrimp shrink shrub shuffle sigma sigma-square signal signal-high signal-low signal-medium signal-zero signature signpost signpost-big siren skip-back skip-forward skull slack slash slash-square slice sliders sliders-horizontal smartphone smartphone-charging smartphone-nfc smile smile-plus snail snowflake soap-dispenser-droplet sofa solar-panel soup space spade sparkle sparkles speaker speech spell-check spell-check2 spline spline-pointer split split-square-horizontal split-square-vertical spool spotlight spray-can sprout square square-dashed-bottom square-dashed-bottom-code square-dashed-top-solid square-pause square-radical square-round-corner square-square square-stack square-star square-stop square-terminal square-user square-user-round square-x squares-exclude squares-intersect squares-subtract squares-unite squircle squircle-dashed squirrel stamp star star-half star-off step-back step-forward stethoscope sticker sticky-note stone store stretch-horizontal stretch-vertical strikethrough subscript sun sun-dim sun-medium sun-moon sun-snow sunrise sunset superscript swatch-book swiss-franc switch-camera sword swords syringe table table2 table-cells-merge table-cells-split table-columns-split table-of-contents table-properties table-rows-split tablet tablet-smartphone tablets tag tags tally1 tally2 tally3 tally4 tally5 tangent target telescope tent tent-tree terminal test-tube test-tube2 test-tubes text-cursor text-cursor-input text-quote text-search text-select text-wrap theater thermometer thermometer-snowflake thermometer-sun thumbs-down thumbs-up ticket ticket-check ticket-minus ticket-percent ticket-plus ticket-slash ticket-x tickets tickets-plane timer timer-off timer-reset toggle-left toggle-right toilet tool-case toolbox tornado torus touchpad touchpad-off tower-control toy-brick tractor traffic-cone train train-front train-front-tunnel train-track transgender trash trash2 tree-deciduous tree-pine trees trello trending-down trending-up trending-up-down triangle triangle-dashed triangle-right trophy truck truck-electric turkish-lira turntable turtle tv tv2 tv-minimal-play twitch twitter type type-outline umbrella umbrella-off underline undo undo2 undo-dot unfold-horizontal unfold-vertical ungroup unlink unlink2 unplug upload usb user user2 user-check user-check2 user-cog user-cog2 user-lock user-minus user-minus2 user-pen user-plus user-plus2 user-round-pen user-round-search user-round-x user-search user-star user-x users users2 utility-pole van variable vault vector-square vegan venetian-mask venus venus-and-mars vibrate vibrate-off video video-off videotape view voicemail volleyball volume volume1 volume2 volume-off volume-x vote wallet wallet2 wallet-cards wallpaper wand wand2 warehouse washing-machine watch waves waves-arrow-down waves-arrow-up waves-ladder waypoints webcam webhook webhook-off weight weight-tilde wheat wheat-off whole-word wifi wifi-cog wifi-high wifi-low wifi-off wifi-pen wifi-sync wifi-zero wind wind-arrow-down wine wine-off workflow worm wrench x youtube zap zap-off zoom-in zoom-out".split(" ");
+const ALIAS = {restart: "rotate refresh", reload: "rotate refresh", stop: "square circle-stop octagon", start: "play", run: "play",
+  deploy: "rocket upload cloud", update: "download refresh", pull: "git-pull download", logs: "scroll file-text", delete: "trash",
+  settings: "settings cog", build: "hammer", backup: "archive save"};
+function pickIcon(row, done) {
+  const q = $("#iconQ"), grid = $("#iconGrid");
+  const draw = () => {
+    const words = q.value.trim().toLowerCase().split(/\s+/).filter(Boolean)
+      .flatMap(w => [w, ...(Object.entries(ALIAS).find(([k]) => k.startsWith(w))?.[1].split(" ") || [])]);
+    const hits = words.length ? ICONS.filter(n => words.some(w => n.includes(w))) : ICONS;
+    $("#iconCount").textContent = `${hits.length} icons` + (hits.length > 300 ? ", showing 300" : "");
+    grid.innerHTML = hits.slice(0, 300).map(n => `<button type="button" data-i="${n}" class="${n === row.dataset.icon ? "on" : ""}" title="${n}">${icon(n, 20)}</button>`).join("");
+  };
+  q.value = ""; draw(); q.oninput = draw;
+  grid.onclick = e => { const b = e.target.closest("button"); if (!b) return; row.dataset.icon = b.dataset.i; row.dataset.mode = "icon"; done(); iconDlg.hide(); };
+  UIkit.util.once("#iconDlg", "hidden", () => { if (!row.dataset.icon) { row.dataset.mode = "text"; done(); } });
+  iconDlg.show().then(() => q.focus());
+}
+
+async function fillEdit() {
+  const f = $("#editForm"); f.reset(); $("#acts").innerHTML = ""; $("#editErr").textContent = "";
+  $("#delBtn").hidden = !cur; $("#cancelBtn").hidden = !!cur;
+  if (!cur) { setTimeout(() => f.name.focus(), 50); return; }
+  let d;
+  f.classList.add("busy");
+  try { d = await get("item", {id: cur.id}); } catch { $("#editErr").textContent = "Couldn't load"; return; } finally { f.classList.remove("busy"); }
+  for (const k of ["name","group","link","note","dir","check","logs","pid"]) f[k].value = d[k] || "";
+  (d.actions || []).forEach(addAct);
+  f.querySelectorAll("textarea").forEach(grow);
+}
+$("#cancelBtn").onclick = () => dlg.hide();
+$("#editForm").onsubmit = async e => {
+  e.preventDefault();
+  const f = e.target, body = {id: cur?.id || ""};
+  for (const k of ["name","group","link","note","dir","check","logs","pid"]) body[k] = f[k].value.trim();
+  $$("#acts .act").forEach((r, i) => {
+    body["alabel"+i] = r.querySelector(".lbl").value.trim();
+    body["acmd"+i] = r.querySelector(".cmd").value.trim();
+    body["aicon"+i] = r.dataset.mode === "icon" ? r.dataset.icon : "";
+    body["atable"+i] = r.querySelector(".ontbl").checked ? 1 : 0;
+  });
+  const sb = $("#saveBtn"); sb.disabled = true; sb.innerHTML = `<span class="ic"><span uk-spinner="ratio: .5"></span>Saving…</span>`;
+  try {
+    const d = await post("save", body);
+    if (d.error) { $("#editErr").textContent = d.error; return; }
+    await refresh();
+    cur = items.find(i => i.id === d.id); header(); tab(cur?.logs ? "logs" : "term");
+    toast("Saved");
+  } catch {} finally { sb.disabled = false; sb.textContent = "Save"; }
+};
+$("#delBtn").onclick = async () => {
+  if (!cur) return;
+  try { await UIkit.modal.confirm(`Delete "${esc(cur.name)}" from the panel? Nothing on the machine is touched.`, {stack: true}); } catch { return; }
+  try { await post("delete", {id: cur.id}); dlg.hide(); toast("Deleted"); } catch {}
+};
+// Command boxes grow as you type.
+function grow(t) { t.style.height = "auto"; t.style.height = t.scrollHeight + 2 + "px"; }
+document.addEventListener("input", e => { if (e.target.tagName === "TEXTAREA") grow(e.target); });
+
+// ---- start ----
+// Ask for the PIN (only if there is one and this browser has no working token).
+async function checkPin() {
+  let d = {};
+  try { d = await send("auth", {tok}); } catch { return; }
+  if (d.token) { tok = d.token; store.set("lantern-tok", tok); }
+  else if (d.error === "blocked") showBlocked();
+  else if (d.error === "pin") askPin();
+}
+// The loading screen stays until the first data is in, then fades out.
+refresh().then(() => {
+  const b = $("#boot"); b.classList.add("gone"); setTimeout(() => b.remove(), 250);
+  checkPin();
+});
+setInterval(() => { if (!dlg.isToggled()) refresh(); }, 30000);
+</script>
+</body>
+</html>
