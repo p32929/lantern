@@ -747,7 +747,7 @@ function stopFollow() { logTimer = null; delete $("#logs").dataset.seen; }
 
 // terminal: xterm.js (loaded the first time it's needed) talking to a shell on the server.
 const XT = "https://cdn.jsdelivr.net/npm/@xterm/";
-let xtLoad, term, fit, tSess = null, tOff = 0, tGen = 0, tEnded = false, tQueue = Promise.resolve(), tBuf = "", tTimer = null;
+let xtLoad, term, fit, tSess = null, tOff = 0, tGen = 0, tEnded = false, tAbort = null, tQ = [], tBusy = false;
 const addScript = src => new Promise((ok, bad) => { const e = document.createElement("script"); e.src = src; e.onload = ok; e.onerror = bad; document.head.append(e); });
 function loadXterm() {
   return xtLoad ||= (async () => {
@@ -762,9 +762,18 @@ function termTheme() {
           selectionBackground: document.documentElement.classList.contains("dark") ? "rgba(255,255,255,.25)" : "rgba(0,0,0,.18)"};
 }
 const tStatus = t => $("#paneStatus").textContent = t;
-// Keys go out in order, a few at a time.
-function tSend(body) { tQueue = tQueue.then(() => post("term_write", {s: tSess, ...body})).catch(() => {}); return tQueue; }
-function tFlush() { const d = tBuf; tBuf = ""; if (d) tSend({d}); }
+// Keys go out at once. While one request is on its way, anything typed meanwhile
+// joins a single next request, so fast typing never queues up and order is kept.
+function tSend(body) {
+  const last = tQ[tQ.length - 1];
+  if (body.d != null && last && last.d != null) last.d += body.d; else tQ.push({s: tSess, ...body});
+  tPump();
+}
+function tPump() {
+  if (tBusy || !tQ.length) return;
+  tBusy = true;
+  post("term_write", tQ.shift()).catch(() => {}).finally(() => { tBusy = false; tPump(); });
+}
 
 async function termStart(fresh = false) {
   const me = ++tGen, s = cur ? cur.id : "_home";
@@ -776,13 +785,13 @@ async function termStart(fresh = false) {
     fit = new FitAddon.FitAddon(); term.loadAddon(fit); term.open($("#term"));
     term.onData(d => {
       if (tEnded) { if (d.includes("\r")) termStart(); return; }
-      tBuf += d; clearTimeout(tTimer); tTimer = setTimeout(tFlush, 8);
+      tSend({d});
     });
     term.onResize(({cols, rows}) => { if (tSess && !tEnded) post("term_resize", {s: tSess, cols, rows}).catch(() => {}); });
     new ResizeObserver(() => { if ($("#term").offsetParent) fit.fit(); }).observe($("#term"));
   }
   term.options.theme = termTheme();
-  fit.fit(); term.reset(); tSess = s; tOff = 0; tEnded = false;
+  fit.fit(); term.reset(); tSess = s; tOff = 0; tEnded = false; tQ = [];
   let d;
   try {
     if (fresh) await post("term_close", {s});
@@ -792,27 +801,38 @@ async function termStart(fresh = false) {
   if (d.error) { tStatus(d.error); return; }
   post("term_resize", {s, cols: term.cols, rows: term.rows}).catch(() => {});
   tStatus(""); term.focus();
+  // One request stays open and the server pushes output into it as the shell prints.
   while (tGen === me) {
     let r;
-    try { r = await fetch(API + "?a=term_read", {method: "POST", body: new URLSearchParams({s, o: tOff, tok})}); }
-    catch { tStatus("Reconnecting…"); await sleep(1000); continue; }
+    tAbort = new AbortController();
+    try { r = await fetch(API + "?a=term_stream", {method: "POST", body: new URLSearchParams({s, o: tOff, tok}), signal: tAbort.signal}); }
+    catch { if (tGen !== me) return; tStatus("Reconnecting…"); await sleep(1000); continue; }
     if (tGen !== me) return;
     if (r.headers.get("X-Error") === "blocked") return showBlocked();
     if (r.headers.get("X-Error") === "pin") { if (!await askPin()) return; continue; }
-    const buf = new Uint8Array(await r.arrayBuffer());
-    if (tGen !== me) return;
     tStatus("");
     if (r.headers.get("X-Reset") === "1") term.reset();
-    if (buf.length) term.write(buf);
-    tOff = +r.headers.get("X-Off") || 0;
-    if (r.headers.get("X-Alive") !== "1") {
+    tOff = +r.headers.get("X-Start") || 0;
+    const rd = r.body.getReader();
+    try {
+      for (;;) {
+        const {value, done} = await rd.read();
+        if (done || tGen !== me) break;
+        term.write(value); tOff += value.length;
+      }
+    } catch {}
+    if (tGen !== me) return;
+    // The stream ended: either the shell closed, or it timed out and we reconnect.
+    const a = await post("term_alive", {s}).catch(() => ({alive: true}));
+    if (tGen !== me) return;
+    if (!a.alive) {
       tEnded = true;
       term.write("\r\n\x1b[2m[shell closed · press Enter to start a new one]\x1b[0m\r\n");
       return;
     }
   }
 }
-function termStop() { tGen++; }
+function termStop() { tGen++; tAbort?.abort(); }
 $("#termNew").onclick = () => termStart(true);
 $("#termBtn").onclick = openTerm;
 // In the terminal tab a button types its command into the shell, so you see it run and can answer prompts.

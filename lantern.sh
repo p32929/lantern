@@ -12,7 +12,7 @@
 # lantern.html and runs this same file for the page's requests (as CGI).
 set -u
 
-VERSION=1.0.0
+VERSION=1.0.1
 
 # ---------------------------------------------------------------- shared ----
 
@@ -335,29 +335,23 @@ api_term_open() {
   echo '{"ok":true,"new":true}'
 }
 
-# Output from byte offset o; waits up to ~10 s for something new.
-api_term_read() {
-  local d n=0 o=${F[o]:-0} i alive=0 reset=0
-  valid_s && d=$(t_dir) || d=/nonexistent
+# The shell's output from byte offset o, streamed as it appears: the response
+# stays open and tail -f pushes new bytes the moment the shell prints them. It
+# ends when the shell does, or after a minute: the page then reconnects, and a
+# stream whose page has closed doesn't linger longer than that.
+api_term_stream() {
+  local d n o=${F[o]:-0} reset=0
+  valid_s && d=$(t_dir) && [ -f "$d/out" ] || { printf 'Content-Type: text/plain\r\nX-Start: 0\r\n\r\n'; return; }
   [[ $o =~ ^[0-9]+$ ]] || o=0
-  for ((i = 0; i < 100; i++)); do
-    n=$(stat -c %s "$d/out" 2>/dev/null || echo 0)
-    ((n != o)) && break
-    t_alive "$d" || break
-    sleep 0.1
-  done
+  n=$(stat -c %s "$d/out")
   ((o > n)) && o=0 reset=1
   ((n - o > 200000)) && o=$((n - 200000))
-  t_alive "$d" && alive=1
-  printf 'Content-Type: application/octet-stream
-Cache-Control: no-store
-X-Off: %s
-X-Alive: %s
-X-Reset: %s
-
-' "$n" "$alive" "$reset"
-  ((n > o)) && tail -c +$((o + 1)) "$d/out" | head -c $((n - o))
+  printf 'Content-Type: application/octet-stream\r\nCache-Control: no-store\r\nX-Start: %s\r\nX-Reset: %s\r\n\r\n' "$o" "$reset"
+  if t_alive "$d"; then exec timeout 60 tail -s 0.05 -c +$((o + 1)) -f --pid="$(< "$d/pid")" "$d/out"; fi
+  tail -c +$((o + 1)) "$d/out"
 }
+
+api_term_alive() { valid_s && t_alive "$(t_dir)" && echo '{"alive":true}' || echo '{"alive":false}'; }
 
 # Keys typed in the page, or a button's command (typed in and run).
 api_term_write() {
@@ -409,15 +403,15 @@ cgi() {
     return
   fi
   case $a in
-    term_read)
-      if pin_ok; then api_term_read; else printf 'Content-Type: application/json\r\nX-Error: pin\r\nX-Off: 0\r\nX-Alive: 0\r\n\r\n'; denied; fi ;;
+    term_stream)
+      if pin_ok; then api_term_stream; else printf 'Content-Type: application/json\r\nX-Error: pin\r\n\r\n'; denied; fi ;;
     logs | history) printf 'Content-Type: text/plain; charset=utf-8\r\nCache-Control: no-store\r\n\r\n'; "api_$a" ;;
     *) printf 'Content-Type: application/json\r\nCache-Control: no-store\r\n\r\n'
       case $a in
         list) api_list ;;
         item) api_item ;;
         job) if pin_ok; then api_job; else denied; fi ;;
-        auth | save | delete | run | term_open | term_write | term_resize | term_close)
+        auth | save | delete | run | term_open | term_write | term_resize | term_close | term_alive)
           if pin_ok; then "api_$a"; else denied; fi ;;
         *) echo '{"error":"unknown request"}' ;;
       esac ;;

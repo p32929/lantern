@@ -173,4 +173,5 @@ sit on very small machines.
 ```
 lantern.sh     the setup script, and the page's backend
 lantern.html   the page
+CHANGELOG.md   what changed in each version
 ```
