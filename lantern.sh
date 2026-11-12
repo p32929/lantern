@@ -11,8 +11,9 @@
 # The web server is busybox httpd, which ships with Ubuntu/Debian. It serves
 # lantern.html and runs this same file for the page's requests (as CGI).
 set -u
+umask 077   # what Lantern keeps (commands, logs, terminal output) is for this user only
 
-VERSION=1.0.1
+VERSION=1.0.2
 
 # ---------------------------------------------------------------- shared ----
 
@@ -68,8 +69,10 @@ sh_in() { (cd "$1" && timeout "$2" bash -c "$3") 2>/dev/null < /dev/null; }
 # PIN, so it stops working only when the machine reboots or the PIN changes.
 token() { printf '%s:%s' "$PIN" "$(< /proc/sys/kernel/random/boot_id)" | sha256sum | cut -d' ' -f1; }
 # Wrong PINs are counted per IP address. The 5th one blocks that address from
-# everything for 7 days. Only starting Lantern again (restart or reboot) clears it.
-MAX_TRIES=5 BLOCK_DAYS=7 LEFT=
+# everything for 7 days. 20 wrong PINs in total, from any addresses, stop PIN
+# logins altogether, so many addresses can't share the guessing; browsers that
+# already have a token keep working. Only starting Lantern again clears both.
+MAX_TRIES=5 BLOCK_DAYS=7 MAX_TOTAL=20 LEFT= LOCKED=
 fail_file() {
   local ip=${REMOTE_ADDR:-unknown}
   ip=${ip#[}; ip=${ip%]}; ip=${ip#::ffff:}   # busybox gives IPv4 as [::ffff:a.b.c.d]
@@ -82,26 +85,32 @@ pin_ok() {
   [ "${F[tok]:-}" = "$(token)" ] && return 0
   [ -n "${F[pin]:-}" ] || return 1
   # One PIN check at a time, so firing many requests at once can't get past the limit.
-  local f n=0 u=0 lk ok=1
+  local f n=0 u=0 tot=0 lk ok=1
   f=$(fail_file); mkdir -p "$RUN/fails"
   exec {lk}> "$RUN/fails/.lock"; flock "$lk"
   read -r n u 2> /dev/null < "$f"
+  read -r tot 2> /dev/null < "$RUN/fails/.total"
   if [ "${u:-0}" -gt "$(date +%s)" ]; then ok=1
+  elif ((${tot:-0} >= MAX_TOTAL)); then LOCKED=1
   elif [ "$(printf %s "${F[pin]}" | sha256sum | cut -d' ' -f1)" = "$PIN" ]; then rm -f "$f"; ok=0
   else
     n=$((${n:-0} + 1))
     ((n >= MAX_TRIES)) && u=$(($(date +%s) + BLOCK_DAYS * 86400))
     echo "$n ${u:-0}" > "$f"; LEFT=$((MAX_TRIES - n))
+    echo $((${tot:-0} + 1)) > "$RUN/fails/.total"
   fi
   exec {lk}>&-
   return $ok
 }
-# The answer to a request that needed the PIN and didn't have a good one.
+# The answer to a request without a good token or PIN. X-Error says why, so the
+# page can tell for any request (JSON, text or the terminal stream).
 denied() {
-  sleep 1
-  if blocked; then echo '{"error":"blocked"}'
-  elif [ -n "$LEFT" ]; then printf '{"error":"pin","left":%s}\n' "$LEFT"
-  else echo '{"error":"pin"}'; fi
+  local e=pin
+  [ -n "${F[pin]:-}" ] && sleep 1   # slows guessing
+  if blocked; then e=blocked; elif [ -n "$LOCKED" ]; then e=locked; fi
+  printf 'Content-Type: application/json\r\nCache-Control: no-store\r\nX-Error: %s\r\n\r\n' "$e"
+  if [ $e = pin ] && [ -n "$LEFT" ]; then printf '{"error":"pin","left":%s}\n' "$LEFT"
+  else printf '{"error":"%s"}\n' "$e"; fi
 }
 
 now_us() { local t; t=$(date +%s%N); echo $((t / 1000)); }
@@ -393,28 +402,23 @@ cgi() {
   export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
   mkdir -p "$RUN"
   declare -gA F=()
-  parse "${QUERY_STRING:-}"
-  if [ "${REQUEST_METHOD:-}" = POST ] && [ "${CONTENT_LENGTH:-0}" -gt 0 ]; then
-    parse "$(head -c "$CONTENT_LENGTH")"
+  local n=${CONTENT_LENGTH:-0}
+  [[ $n =~ ^[0-9]+$ ]] || n=0
+  if ((n > 1000000)); then   # the biggest real request (saving an item) is a few KB
+    printf 'Status: 413\r\nContent-Type: application/json\r\n\r\n{"error":"too big"}\n'; return
   fi
-  local a=${F[a]:-}
-  if [ -n "$PIN" ] && blocked; then
-    printf 'Content-Type: application/json\r\nCache-Control: no-store\r\nX-Error: blocked\r\n\r\n{"error":"blocked"}\n'
-    return
-  fi
+  # Only the body is read: the token never sits in a URL.
+  [ "${REQUEST_METHOD:-}" = POST ] && ((n > 0)) && parse "$(head -c "$n")"
+  local a=${QUERY_STRING#a=}
+  a=${a%%&*}
+  # Everything needs the PIN (or the token it gave), looking included.
+  if [ -n "$PIN" ] && { blocked || ! pin_ok; }; then denied; return; fi
   case $a in
-    term_stream)
-      if pin_ok; then api_term_stream; else printf 'Content-Type: application/json\r\nX-Error: pin\r\n\r\n'; denied; fi ;;
+    term_stream) api_term_stream ;;
     logs | history) printf 'Content-Type: text/plain; charset=utf-8\r\nCache-Control: no-store\r\n\r\n'; "api_$a" ;;
-    *) printf 'Content-Type: application/json\r\nCache-Control: no-store\r\n\r\n'
-      case $a in
-        list) api_list ;;
-        item) api_item ;;
-        job) if pin_ok; then api_job; else denied; fi ;;
-        auth | save | delete | run | term_open | term_write | term_resize | term_close | term_alive)
-          if pin_ok; then "api_$a"; else denied; fi ;;
-        *) echo '{"error":"unknown request"}' ;;
-      esac ;;
+    list | item | job | auth | save | delete | run | term_open | term_write | term_resize | term_close | term_alive)
+      printf 'Content-Type: application/json\r\nCache-Control: no-store\r\n\r\n'; "api_$a" ;;
+    *) printf 'Content-Type: application/json\r\n\r\n{"error":"unknown request"}\n' ;;
   esac
 }
 
@@ -452,6 +456,7 @@ record() {
 serve() {
   [ -n "$SAVED_PATH" ] && export PATH=$SAVED_PATH
   mkdir -p "$RUN"
+  chmod -R go-rwx "$DIR"   # older versions left it readable by other users
   rm -rf "$RUN/fails"   # starting again forgets wrong PINs and blocked addresses
   (while :; do record; sleep 60; done) &
   exec busybox httpd -f -p "$PORT" -h "$WWW"
@@ -529,11 +534,14 @@ status() {
     [ -f "$f" ] && read -r n u < "$f" && [ "${u:-0}" -gt "$now" ] &&
       say "Blocked after $n wrong PINs: ${f##*/} (until $(date -d "@$u" '+%a %d %b %H:%M'); restart to unblock)"
   done
+  read -r n 2> /dev/null < "$RUN/fails/.total" && ((n >= MAX_TOTAL)) &&
+    say "PIN logins are off after $n wrong PINs in total; browsers already in still work. Restart to turn them back on."
+  true
 }
 
 set_pin() {
   local p
-  read -rsp "PIN for adding, editing and running things (empty = no PIN): " p; echo
+  read -rsp "PIN to open Lantern (empty = no PIN: anyone who can reach the port gets in): " p; echo
   PIN=$([ -n "$p" ] && printf %s "$p" | sha256sum | cut -d' ' -f1)
 }
 

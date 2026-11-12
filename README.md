@@ -46,7 +46,7 @@ It asks three things:
 ```
 Setting up Lantern.
 Port [80]:
-PIN for adding, editing and running things (empty = no PIN):
+PIN to open Lantern (empty = no PIN: anyone who can reach the port gets in):
 Keep it running always (starts on boot, comes back if it crashes)? [Y/n]:
 Running: http://192.168.1.20:80
 ```
@@ -146,18 +146,27 @@ internet. The server doesn't.
 
 Lantern is made for your home network.
 
-- Anyone who can open the page can **see** the list, stats and logs.
-- Anything that **changes** something (adding, editing, running a button, the
-  terminal) needs the PIN. It's asked once, and that browser stays trusted until
+- **Everything needs the PIN**, looking included: the list, stats, logs, graphs,
+  buttons and the terminal. Until it's entered the page shows nothing and the
+  server answers nothing. It's asked once, and that browser stays trusted until
   the machine reboots or you change the PIN.
-- **5 wrong PINs and that device is locked out** (by IP address) of everything,
-  viewing included, for 7 days. Only starting Lantern again clears it: run
+- **5 wrong PINs and that device is locked out** (by IP address) for 7 days.
+  **20 wrong PINs in total**, from any mix of addresses, turn PIN logins off
+  altogether (browsers already in keep working), so guessing can't be spread
+  over many addresses. Only starting Lantern again clears both: run
   `./lantern.sh restart` on the server, or reboot. `./lantern.sh status` lists
   who's blocked.
+- Lantern's files (your commands, logs, terminal output) can only be read by
+  your user, not by other accounts on the machine.
+- The page refuses to run inside another site's frame, only links to web
+  addresses, and the browser checks every file it loads from the CDN against a
+  fixed fingerprint.
 - Commands and the terminal run as **your user**. Someone with the PIN has a shell
   as you.
-- It's plain HTTP. Don't open it to the internet. If you need it away from home,
-  use a VPN like Tailscale or WireGuard.
+- It's plain HTTP, so the PIN travels unencrypted. Don't open it to the
+  internet. If you need it away from home, use a VPN like Tailscale or
+  WireGuard, or an SSH tunnel: `ssh -L 9999:localhost:9999 you@server`, then
+  open http://localhost:9999.
 
 ## Requirements
 

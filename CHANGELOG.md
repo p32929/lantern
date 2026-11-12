@@ -5,6 +5,32 @@ Every update to Lantern goes here, newest first. Version numbers are
 `./lantern.sh version` and the badge next to the name on the page show which one
 you're running.
 
+## 1.0.2 — 2026-11-13
+
+**Security fixes.**
+
+- Everything now needs the PIN. Before, anyone who could open the page saw the
+  list, stats, logs, graphs and even the saved commands; only changes needed
+  the PIN. Now the PIN is asked before anything loads, and the server answers
+  every request without a good token with nothing but "PIN needed". That also
+  stops other websites you visit from reading Lantern through your browser
+  (DNS rebinding), and strangers from making the server run every check command
+  over and over.
+- 20 wrong PINs in total, from any mix of addresses, turn PIN logins off until
+  Lantern restarts (browsers already in keep working). The 5-per-address limit
+  alone could be dodged by trying from many addresses.
+- Lantern's folder (commands, logs, terminal output, history) was readable by
+  every account on the machine. It's now private to your user, and existing
+  installs are fixed on start.
+- The token is only ever sent in the request body, never in a URL.
+- Requests over 1 MB are refused instead of being read into memory.
+- The page refuses to run inside another site's frame (no tricked clicks).
+- Links only open web addresses (`http://`, `https://`), never `javascript:`.
+- Button names in tooltips can't inject HTML.
+- Every file loaded from the CDN (Franken UI, xterm.js) is checked against a
+  fixed fingerprint (Subresource Integrity), so a tampered CDN file is refused.
+- The page no longer sends its address to sites it links to.
+
 ## 1.0.1 — 2026-11-12
 
 **Faster terminal.**

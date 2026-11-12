@@ -3,8 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
 <title>Lantern</title>
 <script>
+// Never inside another site's frame, where it could be tricked into clicks.
+if (top !== self) { document.documentElement.innerHTML = ""; throw new Error("framed"); }
 // Theme: "system" (follows the OS), "light" or "dark", remembered in this browser.
 const dm = matchMedia("(prefers-color-scheme: dark)");
 let theme = "system";
@@ -32,9 +35,10 @@ html.dark:has(#boot){background:#09090b}
 #boot .br{display:flex;align-items:center;gap:16px;height:52px;padding:0 18px;border-top:1px solid var(--l)}
 @media (max-width:768px){#boot{padding:16px 12px}#boot .bs{grid-template-columns:repeat(2,1fr)}#boot .bs > div:nth-child(n+3){display:none}#boot .hs{display:none}}
 </style>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/franken-ui@2.1.2/dist/css/core.min.css">
-<script src="https://cdn.jsdelivr.net/npm/franken-ui@2.1.2/dist/js/core.iife.js" type="module"></script>
-<script src="https://cdn.jsdelivr.net/npm/franken-ui@2.1.2/dist/js/icon.iife.js" type="module"></script>
+<!-- integrity: the browser refuses these files if the CDN ever serves anything else -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/franken-ui@2.1.2/dist/css/core.min.css" integrity="sha384-f7ZBMp1fa25usJtJiMKP/QZgoFOFeb79F2p9v4+CanSn+SYjn+Kf+fLwEU4zQEfb" crossorigin="anonymous">
+<script src="https://cdn.jsdelivr.net/npm/franken-ui@2.1.2/dist/js/core.iife.js" type="module" integrity="sha384-zeg/JP9SBT/fzlmDOOx74QVvnxHzCo9UhiXi2St7HGR+39f5VR8DhUidNf17aMXw" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/franken-ui@2.1.2/dist/js/icon.iife.js" type="module" integrity="sha384-zXJd/8e0IJxsEEHEAnka3D+7P01te77o1ggoTI8AhUChoCDH5ZaycTo4P+91mPA3" crossorigin="anonymous"></script>
 <style>
 :root{--ok:142 71% 40%;--line:hsl(var(--border))}
 .dark{--ok:142 69% 50%}
@@ -412,52 +416,54 @@ let tok = store.get("lantern-tok"), items = [], cur = null, logTimer = null, ske
 const mb = b => b == null ? "–" : b >= 1e9 ? (b/1073741824).toFixed(1)+" GB" : Math.round(b/1048576)+" MB";
 const pc = c => c == null ? "–" : c+"%";
 const dur = s => { const d=Math.floor(s/86400), h=Math.floor(s%86400/3600), m=Math.floor(s%3600/60); return (d?d+"d ":"")+(d||h?h+"h ":"")+m+"m"; };
-const linkOf = l => (l||"").replaceAll("{host}", location.hostname);
+// Only web addresses become links (never javascript: or the like).
+const linkOf = l => { l = (l||"").replaceAll("{host}", location.hostname); return /^https?:\/\//i.test(l) ? l : ""; };
 const shortLink = l => { try { const u = new URL(l); return u.host + (u.pathname === "/" ? "" : u.pathname); } catch { return l; } };
 const dotOf = up => up === true ? "up" : up === false ? "down" : "";
 // A button as text, or as an icon with its name as the tooltip.
 const btnHtml = (a, cls) => a.icon
-  ? `<button type="button" class="uk-btn uk-btn-ghost uk-btn-icon uk-btn-sm ${cls}" data-n="${a.n}" aria-label="${esc(a.label)}" uk-tooltip="${esc(a.label)}">${icon(a.icon, 16)}</button>`
+  ? `<button type="button" class="uk-btn uk-btn-ghost uk-btn-icon uk-btn-sm ${cls}" data-n="${a.n}" aria-label="${esc(a.label)}" uk-tooltip="${tipAttr(esc(a.label))}">${icon(a.icon, 16)}</button>`
   : `<button type="button" class="uk-btn uk-btn-default uk-btn-sm ${cls}" data-n="${a.n}">${esc(a.label)}</button>`;
 
-async function get(a, q = {}) {
-  const r = await fetch(API + "?" + new URLSearchParams({a, ...q}), {cache: "no-store"});
-  return a === "logs" || a === "history" ? r.text() : r.json();
-}
-const send = async (a, body) => (await fetch(API + "?a=" + a, {method: "POST", body: new URLSearchParams(body)})).json();
-// Changes need the PIN, asked once when the page opens. The server answers with a
-// token this browser keeps until the machine reboots or the PIN changes.
-async function post(a, body = {}) {
+const send = (a, body, opt = {}) => fetch(API + "?a=" + a, {method: "POST", body: new URLSearchParams(body), cache: "no-store", ...opt});
+// Every request needs the PIN, even just looking. The server answers a right PIN
+// with a token this browser keeps (and sends in the body, never the URL) until the
+// machine reboots or the PIN changes. A missing or stale one asks for the PIN again.
+async function call(a, body = {}, opt) {
   for (;;) {
-    const d = await send(a, {...body, tok});
-    if (d.error === "blocked") { showBlocked(); throw new Error("blocked"); }
-    if (d.error !== "pin") return d;
+    const r = await send(a, {...body, tok}, opt), e = r.headers.get("X-Error");
+    if (e === "blocked" || e === "locked") { showBlocked(e); throw new Error(e); }
+    if (e !== "pin") return r;
     if (!await askPin()) throw new Error("cancelled");
   }
 }
+const post = async (a, body) => (await call(a, body)).json();
+const text = async (a, body) => (await call(a, body)).text();
 let pinWait = null;
 // After 5 wrong PINs the server refuses this device; say so instead of a broken page.
-function showBlocked() {
+// After 20 wrong PINs from anywhere, nobody new gets in until Lantern restarts.
+function showBlocked(why) {
   if ($("#blocked")) return;
   $$(".uk-modal.uk-open").forEach(m => UIkit.modal(m).hide());
-  document.body.insertAdjacentHTML("beforeend", `<div id="blocked"><div class="uk-card uk-card-body">${icon("shield-ban", 32)}
-    <h2>This device is blocked</h2><p class="mut">Too many wrong PINs. It stays blocked for 7 days, or until Lantern is restarted on the server.</p></div></div>`);
+  document.body.insertAdjacentHTML("beforeend", `<div id="blocked"><div class="uk-card uk-card-body">${icon("shield-ban", 32)}` + (why === "locked"
+    ? `<h2>PIN logins are turned off</h2><p class="mut">Too many wrong PINs were tried. Restart Lantern on the server to turn them back on.</p></div></div>`
+    : `<h2>This device is blocked</h2><p class="mut">Too many wrong PINs. It stays blocked for 7 days, or until Lantern is restarted on the server.</p></div></div>`));
 }
 function askPin() {
   return pinWait ||= new Promise(res => {
     let done = false;
     const finish = ok => { if (done) return; done = true; pinWait = null; res(ok); pinDlg.hide(); };
     const msg = $("#pinMsg"), ok = $("#pinForm button:not([type])");
-    msg.textContent = "Enter the PIN to make changes."; msg.className = "mut";
-    $("#pinIn").value = "";
+    msg.textContent = "Enter the PIN to open Lantern."; msg.className = "mut";
+    $("#pinIn").value = ""; $("#pinCancel").hidden = !lastAt;   // nothing to fall back to before the first load
     $("#pinForm").onsubmit = async e => {
       e.preventDefault();
       ok.disabled = true; ok.innerHTML = `<span uk-spinner="ratio: .5"></span>`;
       let d = {};
-      try { d = await send("auth", {pin: $("#pinIn").value}); } catch {}
+      try { d = await (await send("auth", {pin: $("#pinIn").value})).json(); } catch {}
       ok.disabled = false; ok.textContent = "OK";
       if (d.token) { tok = d.token; store.set("lantern-tok", tok); finish(true); return; }
-      if (d.error === "blocked") { finish(false); showBlocked(); return; }
+      if (d.error === "blocked" || d.error === "locked") { finish(false); showBlocked(d.error); return; }
       msg.textContent = d.left != null ? `Wrong PIN. ${d.left} ${d.left === 1 ? "try" : "tries"} left before this device is blocked for 7 days.` : "That PIN didn't work. Try again.";
       msg.className = "err";
       $("#pinIn").select();
@@ -518,8 +524,7 @@ setInterval(() => { clock(); ago(); }, 1000);
 // ---- the list ----
 async function refresh() {
   try {
-    const d = await get("list");
-    if (d.error === "blocked") return showBlocked();
+    const d = await post("list");
     items = d.items; showStats(d.stats, d.hist); $("#ver").textContent = d.version ? "v" + d.version : ""; render(); lastAt = Date.now(); ago();
   } catch {}
 }
@@ -707,7 +712,7 @@ function drawUsage() {
 }
 async function loadUsage(me) {
   try {
-    const t = await get("history", {id: cur.id, h: uHours});
+    const t = await text("history", {id: cur.id, h: uHours});
     if (uTimer !== me) return;
     uData = t.trim().split("\n").filter(Boolean).map(l => l.split(" ").map(Number));
     drawUsage();
@@ -729,7 +734,7 @@ async function loadLogs(me) {
   if (!cur) return;
   const pre = $("#logs"), atEnd = pre.scrollHeight - pre.scrollTop - pre.clientHeight < 40;
   try {
-    const t = ansi(await get("logs", {id: cur.id}));
+    const t = ansi(await text("logs", {id: cur.id}));
     if (logTimer !== me) return;
     pre.textContent = t;
     $("#paneStatus").innerHTML = `<span class="ic"><span class="dot up"></span>Live</span>`;
@@ -748,12 +753,13 @@ function stopFollow() { logTimer = null; delete $("#logs").dataset.seen; }
 // terminal: xterm.js (loaded the first time it's needed) talking to a shell on the server.
 const XT = "https://cdn.jsdelivr.net/npm/@xterm/";
 let xtLoad, term, fit, tSess = null, tOff = 0, tGen = 0, tEnded = false, tAbort = null, tQ = [], tBusy = false;
-const addScript = src => new Promise((ok, bad) => { const e = document.createElement("script"); e.src = src; e.onload = ok; e.onerror = bad; document.head.append(e); });
+const addScript = (src, sri) => new Promise((ok, bad) => { const e = document.createElement("script"); e.src = src; e.integrity = sri; e.crossOrigin = "anonymous"; e.onload = ok; e.onerror = bad; document.head.append(e); });
 function loadXterm() {
   return xtLoad ||= (async () => {
-    const l = document.createElement("link"); l.rel = "stylesheet"; l.href = XT + "xterm@5.5.0/css/xterm.css"; document.head.append(l);
-    await addScript(XT + "xterm@5.5.0/lib/xterm.js");
-    await addScript(XT + "addon-fit@0.10.0/lib/addon-fit.js");
+    const l = document.createElement("link"); l.rel = "stylesheet"; l.href = XT + "xterm@5.5.0/css/xterm.css";
+    l.integrity = "sha384-8Xk9wy/gzEDUKrXtrmCFa2bBuK3BpjpDuL/p0SeKQX19Khl/M+lHOgD/CyYf7efP"; l.crossOrigin = "anonymous"; document.head.append(l);
+    await addScript(XT + "xterm@5.5.0/lib/xterm.js", "sha384-M169f14mRZOXm3hD/v2Ti0ThIT/RnAQagXA9nlE15yHAtrW19gdePJh/HaTzUOe/");
+    await addScript(XT + "addon-fit@0.10.0/lib/addon-fit.js", "sha384-iF+jqbuti4XlB64clWgFWYEscb+UnSRv3VgVikGYZu+otNFnSHr7y7NcKfBnGizn");
   })();
 }
 function termTheme() {
@@ -805,11 +811,9 @@ async function termStart(fresh = false) {
   while (tGen === me) {
     let r;
     tAbort = new AbortController();
-    try { r = await fetch(API + "?a=term_stream", {method: "POST", body: new URLSearchParams({s, o: tOff, tok}), signal: tAbort.signal}); }
-    catch { if (tGen !== me) return; tStatus("Reconnecting…"); await sleep(1000); continue; }
+    try { r = await call("term_stream", {s, o: tOff}, {signal: tAbort.signal}); }
+    catch (e) { if (tGen !== me || ["blocked", "locked", "cancelled"].includes(e.message)) return; tStatus("Reconnecting…"); await sleep(1000); continue; }
     if (tGen !== me) return;
-    if (r.headers.get("X-Error") === "blocked") return showBlocked();
-    if (r.headers.get("X-Error") === "pin") { if (!await askPin()) return; continue; }
     tStatus("");
     if (r.headers.get("X-Reset") === "1") term.reset();
     tOff = +r.headers.get("X-Start") || 0;
@@ -921,7 +925,7 @@ async function fillEdit() {
   if (!cur) { setTimeout(() => f.name.focus(), 50); return; }
   let d;
   f.classList.add("busy");
-  try { d = await get("item", {id: cur.id}); } catch { $("#editErr").textContent = "Couldn't load"; return; } finally { f.classList.remove("busy"); }
+  try { d = await post("item", {id: cur.id}); } catch { $("#editErr").textContent = "Couldn't load"; return; } finally { f.classList.remove("busy"); }
   for (const k of ["name","group","link","note","dir","check","logs","pid"]) f[k].value = d[k] || "";
   (d.actions || []).forEach(addAct);
   f.querySelectorAll("textarea").forEach(grow);
@@ -956,20 +960,17 @@ function grow(t) { t.style.height = "auto"; t.style.height = t.scrollHeight + 2 
 document.addEventListener("input", e => { if (e.target.tagName === "TEXTAREA") grow(e.target); });
 
 // ---- start ----
-// Ask for the PIN (only if there is one and this browser has no working token).
-async function checkPin() {
-  let d = {};
-  try { d = await send("auth", {tok}); } catch { return; }
-  if (d.token) { tok = d.token; store.set("lantern-tok", tok); }
-  else if (d.error === "blocked") showBlocked();
-  else if (d.error === "pin") askPin();
-}
-// The loading screen stays until the first data is in, then fades out.
-refresh().then(() => {
+// The PIN comes first (if there is one and this browser has no working token):
+// until then the loading screen stays and the server gives out nothing.
+(async () => {
+  for (;;) {
+    try { const d = await post("auth"); if (d.token) { tok = d.token; store.set("lantern-tok", tok); } break; }
+    catch (e) { if (e.message !== "cancelled") { if (e.message === "blocked" || e.message === "locked") return; await sleep(2000); } }
+  }
+  await refresh();
   const b = $("#boot"); b.classList.add("gone"); setTimeout(() => b.remove(), 250);
-  checkPin();
-});
-setInterval(() => { if (!dlg.isToggled()) refresh(); }, 30000);
+})();
+setInterval(() => { if (lastAt && !dlg.isToggled()) refresh(); }, 30000);
 </script>
 </body>
 </html>
