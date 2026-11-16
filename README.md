@@ -12,18 +12,18 @@ logs` that, restart something, forget what port it was on.
 
 Lantern puts all of that on one page you can open from your phone.
 
-- **See everything at a glance.** Each service is a row: green or red, its link, and
+1. **See everything at a glance.** Each service is a row: green or red, its link, and
   how much CPU and memory it is using. The top shows the machine itself: CPU,
   memory, disk, uptime, Wi-Fi, battery.
-- **Fix things in one click.** Put a Restart (or Deploy, or anything) button right on
+2. **Fix things in one click.** Put a Restart (or Deploy, or anything) button right on
   the row. Click it, a spinner turns, you get a "done" or the error.
-- **See how things have been doing.** Small graphs show the last hour of CPU and
+3. **See how things have been doing.** Small graphs show the last hour of CPU and
   memory for every service, and the last day for the machine. Open a service for
   bigger 1, 6 and 24-hour charts.
-- **Read the logs.** Live, updated every second, while you look at them.
-- **A real terminal in the browser.** `git pull` asks for a password? Type it.
+4. **Read the logs.** Live, updated every second, while you look at them.
+5. **A real terminal in the browser.** `git pull` asks for a password? Type it.
   Ctrl-C, tab completion, colours, history all work.
-- **Works with anything.** Lantern doesn't know about Docker or systemd. You tell it
+6. **Works with anything.** Lantern doesn't know about Docker or systemd. You tell it
   a few shell commands per service, so it works for containers, services, plain
   processes, cron jobs, a game server, whatever. There are one-click templates for
   the common ones.
@@ -37,7 +37,7 @@ Lantern puts all of that on one page you can open from your phone.
 You need Linux with bash and busybox (both already there on Ubuntu and Debian).
 
 ```bash
-git clone <this repo> lantern && cd lantern
+git clone https://github.com/p32929/lantern.git && cd lantern
 ./lantern.sh
 ```
 
@@ -80,11 +80,11 @@ systemd service, podman container, docker container, or any process.
 
 Handy tricks:
 
-- `{host}` in a link becomes whatever address you opened Lantern with, so the same
+1. `{host}` in a link becomes whatever address you opened Lantern with, so the same
   link works from home Wi-Fi and from a VPN.
-- A link that starts with `$ ` is a command, and its output becomes the link. Good
+2. A link that starts with `$ ` is a command, and its output becomes the link. Good
   for apps whose login token changes on every restart.
-- Groups turn the table into sections (Apps, Media, Admin…).
+3. Groups turn the table into sections (Apps, Media, Admin…).
 
 ## The terminal
 
@@ -125,17 +125,17 @@ On a phone every service becomes a small card with the same information:
 
 There is no daemon of its own and nothing to compile.
 
-- **busybox httpd** (already on Ubuntu/Debian) serves `lantern.html` and runs
+1. **busybox httpd** (already on Ubuntu/Debian) serves `lantern.html` and runs
   `lantern.sh` for every request the page makes, the old-school CGI way.
-- **Your services are folders of plain text files** in `~/.lantern/items/`. One
+2. **Your services are folders of plain text files** in `~/.lantern/items/`. One
   file per field. Back them up, edit them by hand, or copy them to another machine.
-- **CPU and memory** come from the service's cgroup (so a container or a
+3. **CPU and memory** come from the service's cgroup (so a container or a
   multi-process service is counted as a whole), falling back to the single process.
-- **History** is one line a minute per service in `~/.lantern/history/`, kept
+4. **History** is one line a minute per service in `~/.lantern/history/`, kept
   for 24 hours, recorded by a small loop that runs next to the web server.
-- **The terminal** is a real pseudo-terminal (`script` from util-linux) fed
+5. **The terminal** is a real pseudo-terminal (`script` from util-linux) fed
   through a named pipe, drawn in the browser with xterm.js.
-- **Always on** is a systemd user service with `Restart=always`, started at boot.
+6. **Always on** is a systemd user service with `Restart=always`, started at boot.
   On a machine without systemd it runs in the background instead.
 
 The page loads [Franken UI](https://franken-ui.dev) and
@@ -146,33 +146,33 @@ internet. The server doesn't.
 
 Lantern is made for your home network.
 
-- **Everything needs the PIN**, looking included: the list, stats, logs, graphs,
+1. **Everything needs the PIN**, looking included: the list, stats, logs, graphs,
   buttons and the terminal. Until it's entered the page shows nothing and the
   server answers nothing. It's asked once, and that browser stays trusted until
   the machine reboots or you change the PIN.
-- **5 wrong PINs and that device is locked out** (by IP address) for 7 days.
+2. **5 wrong PINs and that device is locked out** (by IP address) for 7 days.
   **20 wrong PINs in total**, from any mix of addresses, turn PIN logins off
   altogether (browsers already in keep working), so guessing can't be spread
   over many addresses. Only starting Lantern again clears both: run
   `./lantern.sh restart` on the server, or reboot. `./lantern.sh status` lists
   who's blocked.
-- Lantern's files (your commands, logs, terminal output) can only be read by
+3. Lantern's files (your commands, logs, terminal output) can only be read by
   your user, not by other accounts on the machine.
-- The page refuses to run inside another site's frame, only links to web
+4. The page refuses to run inside another site's frame, only links to web
   addresses, and the browser checks every file it loads from the CDN against a
   fixed fingerprint.
-- Commands and the terminal run as **your user**. Someone with the PIN has a shell
+5. Commands and the terminal run as **your user**. Someone with the PIN has a shell
   as you.
-- It's plain HTTP, so the PIN travels unencrypted. Don't open it to the
+6. It's plain HTTP, so the PIN travels unencrypted. Don't open it to the
   internet. If you need it away from home, use a VPN like Tailscale or
   WireGuard, or an SSH tunnel: `ssh -L 9999:localhost:9999 you@server`, then
   open http://localhost:9999.
 
 ## Requirements
 
-- Linux with bash 4+, busybox, and util-linux (`script`, `setsid`)
-- systemd, for start-on-boot (optional)
-- Any modern browser
+1. Linux with bash 4+, busybox, and util-linux (`script`, `setsid`)
+2. systemd, for start-on-boot (optional)
+3. Any modern browser
 
 Tested on Ubuntu Server on a Chromebook with 3 GB of RAM. It's light enough to
 sit on very small machines.
@@ -184,3 +184,15 @@ lantern.sh     the setup script, and the page's backend
 lantern.html   the page
 CHANGELOG.md   what changed in each version
 ```
+
+## Contributing
+
+Contributions are very welcome, thank you! Before you start on a pull request, please open an issue and tell me what you would like to add or change. That way we can agree on it first, and your time is not wasted on something that might not fit. Thanks for helping make Lantern better.
+
+## Share
+
+<a href="https://p32929.github.io/share/?repo=lantern"><img src="https://p32929.github.io/readme/share.svg" alt="Share this with your friends in just a click" width="420"></a>
+
+## Support
+
+<a href="https://p32929.github.io/support/"><img src="https://p32929.github.io/readme/support.svg" alt="If you like my works and want to support me, feel free to support" width="420"></a>
