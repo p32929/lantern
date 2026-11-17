@@ -522,11 +522,13 @@ function ago() {
 setInterval(() => { clock(); ago(); }, 1000);
 
 // ---- the list ----
+// True once the list came back and was drawn.
 async function refresh() {
   try {
     const d = await post("list");
     items = d.items; showStats(d.stats, d.hist); $("#ver").textContent = d.version ? "v" + d.version : ""; render(); lastAt = Date.now(); ago();
-  } catch {}
+    return true;
+  } catch { return false; }
 }
 const running = new Set();   // "id/n" of row buttons whose command is still going
 function render() {
@@ -967,7 +969,9 @@ document.addEventListener("input", e => { if (e.target.tagName === "TEXTAREA") g
     try { const d = await post("auth"); if (d.token) { tok = d.token; store.set("lantern-tok", tok); } break; }
     catch (e) { if (e.message !== "cancelled") { if (e.message === "blocked" || e.message === "locked") return; await sleep(2000); } }
   }
-  await refresh();
+  // Right after the machine boots one try can fail; an empty page that never
+  // tries again looks like everything vanished, so keep trying until it loads.
+  while (!await refresh()) await sleep(3000);
   const b = $("#boot"); b.classList.add("gone"); setTimeout(() => b.remove(), 250);
 })();
 setInterval(() => { if (lastAt && !dlg.isToggled()) refresh(); }, 30000);

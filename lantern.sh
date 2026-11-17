@@ -13,7 +13,7 @@
 set -u
 umask 077   # what Lantern keeps (commands, logs, terminal output) is for this user only
 
-VERSION=1.0.2
+VERSION=1.0.3
 
 # ---------------------------------------------------------------- shared ----
 
@@ -161,7 +161,8 @@ item_pid() {
 hist_json() {
   local f=$DIR/history/$1
   [ -s "$f" ] || { printf '"hc":[],"hm":[]'; return; }
-  tail -n 60 "$f" | awk '{c = c s $2; m = m s $3; s = ","} END {printf "\"hc\":[%s],\"hm\":[%s]", c, m}'
+  # A crash or power cut can leave a line of zero bytes; skip anything that isn't numbers.
+  tail -n 60 "$f" | awk '$2 ~ /^-?[0-9.]+$/ && $3 ~ /^[0-9]+$/ {c = c s $2; m = m s $3; s = ","} END {printf "\"hc\":[%s],\"hm\":[%s]", c, m}'
 }
 
 # The machine's last 24 hours for the boxes at the top, averaged into 10-minute steps.

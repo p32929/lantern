@@ -5,6 +5,17 @@ Every update to Lantern goes here, newest first. Version numbers are
 `./lantern.sh version` and the badge next to the name on the page show which one
 you're running.
 
+## 1.0.3 — 2026-11-17
+
+**Fix: the page came up empty after the machine restarted.**
+
+- After a crash or power cut, the history files can end with a line of zero
+  bytes. That line put an empty value into the list's graphs (`[1.2,,3]`), so
+  the whole answer was broken and the page showed nothing: no services, no
+  battery, RAM or other stats. Lines that aren't numbers are now skipped.
+- If the first load fails for any reason, the page keeps trying every 3
+  seconds behind the loading screen instead of giving up on an empty page.
+
 ## 1.0.2 — 2026-11-13
 
 **Security fixes.**
