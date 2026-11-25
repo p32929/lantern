@@ -531,8 +531,21 @@ async function refresh() {
   try {
     const d = await post("list");
     items = d.items; showStats(d.stats, d.hist); $("#ver").textContent = d.version ? "v" + d.version : ""; render(); lastAt = Date.now(); ago();
+    checkPage();
     return true;
   } catch { return false; }
+}
+// The server sends no Cache-Control, so after an update the browser can keep running an
+// old copy of this page for hours. Compare with the file on disk; reload if nothing is open.
+let staleTold = false;
+async function checkPage() {
+  try {
+    const r = await fetch(location.pathname, {method: "HEAD", cache: "no-store"});
+    const disk = Date.parse(r.headers.get("Last-Modified")), mine = Date.parse(document.lastModified);
+    if (!disk || !mine || Math.abs(disk - mine) < 2000) return;
+    if (!$$(".uk-modal.uk-open").length) return location.reload();
+    if (!staleTold) { staleTold = true; toast(`Lantern was updated. <a href="#" onclick="location.reload();return false">Reload</a> to get the new version.`, "primary", 0); }
+  } catch {}
 }
 const running = new Set();   // "id/n" of row buttons whose command is still going
 function render() {

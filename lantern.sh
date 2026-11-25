@@ -13,7 +13,7 @@
 set -u
 umask 077   # what Lantern keeps (commands, logs, terminal output) is for this user only
 
-VERSION=1.0.4
+VERSION=1.0.5
 
 # ---------------------------------------------------------------- shared ----
 

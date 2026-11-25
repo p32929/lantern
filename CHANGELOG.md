@@ -5,6 +5,17 @@ Every update to Lantern goes here, newest first. Version numbers are
 `./lantern.sh version` and the badge next to the name on the page show which one
 you're running.
 
+## 1.0.5 — 2026-11-25
+
+**Fix: after an update, the browser kept showing the old page.**
+
+- The server doesn't tell browsers how long to keep the page, so they guess,
+  and for a page that hadn't changed in a week they kept the old copy for
+  hours. That is why 1.0.4's terminal fix didn't show up right away.
+- The page now checks whether a newer version is on the server each time it
+  refreshes. If nothing is open it reloads itself; if a window is open it
+  shows a message with a Reload link instead, so nothing you're doing is lost.
+
 ## 1.0.4 — 2026-11-25
 
 **Fix: the terminal cut off its last line, and windows could get too big.**
