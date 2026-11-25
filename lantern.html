@@ -135,8 +135,11 @@ td.link a:hover{color:hsl(var(--foreground))}
 .empty{padding:64px 16px;text-align:center}
 .empty p{margin:0 0 16px}
 
+/* no window takes more than 90% of the screen; what doesn't fit scrolls */
+.uk-modal-dialog{max-width:90vw;max-height:90vh;overflow:auto}
+
 /* details window */
-#dlg .uk-modal-dialog{width:min(1100px,calc(100vw - 32px));border-radius:12px;overflow:hidden;display:flex;flex-direction:column;max-height:calc(100vh - 32px)}
+#dlg .uk-modal-dialog{width:min(1100px,90vw);border-radius:12px;overflow:hidden;display:flex;flex-direction:column}
 .dh{display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid var(--line)}
 .dh h2{font-size:1.0625rem;font-weight:600;margin:0;white-space:nowrap}
 .dh .lnk{font-size:.8125rem;display:inline-flex;align-items:center;gap:4px;color:hsl(var(--muted-foreground));overflow:hidden;white-space:nowrap;min-width:0}
@@ -147,7 +150,8 @@ td.link a:hover{color:hsl(var(--foreground))}
 .status{font-size:.75rem;color:hsl(var(--muted-foreground))}
 pre.out{margin:0;background:hsl(var(--muted)/.4);border:1px solid var(--line);border-radius:8px;padding:12px 14px;font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;word-break:break-word;overflow:auto;color:hsl(var(--foreground))}
 #logs{height:min(64vh,580px)}
-#term{height:min(60vh,540px);margin-top:12px;padding:8px 0 8px 10px;border:1px solid var(--line);border-radius:8px;background:hsl(var(--background));overflow:hidden}
+/* content-box: xterm's fit measures this height, so padding and border must sit outside it or the last row is cut off */
+#term{box-sizing:content-box;height:min(60vh,540px);margin-top:12px;padding:8px 0 8px 10px;border:1px solid var(--line);border-radius:8px;background:hsl(var(--background));overflow:hidden}
 #term .xterm,#term .xterm-viewport{background:transparent!important}
 
 /* settings form */
@@ -179,7 +183,7 @@ pre.out{margin:0;background:hsl(var(--muted)/.4);border:1px solid var(--line);bo
 #blocked p{margin:0;font-size:.875rem}
 
 /* icon picker */
-#iconDlg .uk-modal-dialog{width:min(640px,calc(100vw - 32px));border-radius:12px}
+#iconDlg .uk-modal-dialog{width:min(640px,90vw);border-radius:12px}
 #iconGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(44px,1fr));gap:4px;max-height:50vh;overflow:auto;margin-top:12px}
 #iconGrid button{height:44px;border:1px solid transparent;border-radius:8px;background:none;color:hsl(var(--foreground));cursor:pointer;display:grid;place-items:center}
 #iconGrid button:hover{background:hsl(var(--muted))}
@@ -212,7 +216,7 @@ pre.out{margin:0;background:hsl(var(--muted)/.4);border:1px solid var(--line);bo
   .svc td .mv > span:not(.sw){min-width:5.6em;text-align:left}
   .svc .spark{width:72px;height:18px}
   /* details window: use the width, show the link under the name */
-  #dlg .uk-modal-dialog{width:calc(100vw - 16px)}
+  #dlg .uk-modal-dialog{width:90vw}
   #dlg{padding-left:8px;padding-right:8px}
   .dh{flex-wrap:wrap;row-gap:4px;padding:14px 16px}
   .dh .lnk{order:5;flex-basis:100%;padding-left:20px}
@@ -386,7 +390,7 @@ pre.out{margin:0;background:hsl(var(--muted)/.4);border:1px solid var(--line);bo
 </div>
 
 <div id="pinDlg" class="uk-modal" uk-modal="stack: true; bg-close: false">
-  <div class="uk-modal-dialog" style="width:min(360px,calc(100vw - 32px));border-radius:12px">
+  <div class="uk-modal-dialog" style="width:min(360px,90vw);border-radius:12px">
     <form id="pinForm">
       <div class="uk-modal-body">
         <h2 class="uk-modal-title" style="font-size:1rem;margin:0 0 4px">PIN</h2>

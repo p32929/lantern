@@ -5,6 +5,16 @@ Every update to Lantern goes here, newest first. Version numbers are
 `./lantern.sh version` and the badge next to the name on the page show which one
 you're running.
 
+## 1.0.4 — 2026-11-25
+
+**Fix: the terminal cut off its last line, and windows could get too big.**
+
+- The terminal sized itself for a box a few pixels taller than the one it
+  is drawn in, so the bottom line (usually the prompt you are typing at) was
+  half hidden. It now fits exactly.
+- No window (details, icons, PIN, confirmations) takes more than 90% of the
+  screen's width or height any more; whatever doesn't fit scrolls inside it.
+
 ## 1.0.3 — 2026-11-17
 
 **Fix: the page came up empty after the machine restarted.**
